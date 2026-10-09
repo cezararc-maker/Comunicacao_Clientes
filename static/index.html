@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comunicação Clientes v0.1.0</title>
+<title>Comunicação Clientes v0.2.0</title>
 <style>
 :root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
 *{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
@@ -17,15 +17,22 @@ nav button{display:block;width:100%;text-align:left;margin:9px 0}nav button.acti
 #feedback{color:#8a4515;min-height:24px;white-space:pre-wrap}.ok{color:#087d6e!important}.warning{color:#ad450e}
 @media(max-width:760px){main{display:block}.cols,.grid3{grid-template-columns:1fr}}
 </style></head>
-<body><header>◉ Comunicação Clientes <small style="color:#d9ffec">v0.1.0 · cadastros</small></header>
-<main><aside><h3>Central de atendimento</h3><p><small>Primeira versão: base cadastral. Mensagens WhatsApp e QR Code ainda não habilitados.</small></p>
-<nav><button onclick="tab('busca')" id="menu-busca" class="active">Pesquisar contatos</button>
+<body><header>◉ Comunicação Clientes <small style="color:#d9ffec">v0.2.0 · cadastros</small></header>
+<main><aside><h3>Central de atendimento</h3><p><small>Cadastros e conexão por QR Code no aplicativo desktop.</small></p>
+<nav><button onclick="tab('whatsapp')" id="menu-whatsapp">WhatsApp / QR Code</button><button onclick="tab('busca')" id="menu-busca" class="active">Pesquisar contatos</button>
 <button onclick="tab('empresas')" id="menu-empresas">Empresas</button>
 <button onclick="tab('contatos')" id="menu-contatos">Contatos e vínculos</button>
 <button onclick="tab('importar')" id="menu-importar">Importar Excel</button></nav></aside>
 <section>
 <div id="feedback"></div>
-<div id="view-busca"><h2>Pesquisa integrada</h2><div class="card"><label>Nome do contato, telefone, empresa, código ou documento</label>
+<div id="view-whatsapp" class="hidden"><h2>WhatsApp · Conexão e conversas</h2>
+<div class="card"><b>Estado: <span id="wastatus">iniciando</span></b><p id="waerror" class="warning"></p><div id="qrarea"></div>
+<p><small>Conecte pelo WhatsApp do telefone: Aparelhos conectados → Conectar aparelho. Apenas uma sessão central neste computador.</small></p></div>
+<div class="cols"><div class="card"><h3>Conversas</h3><div id="wachats"></div></div>
+<div class="card"><h3 id="wachattitle">Selecione uma conversa</h3><div id="wamessages" style="height:320px;overflow:auto;background:#f4f6f1;padding:12px;border-radius:6px"></div>
+<p id="wareply" style="color:#075e54"></p><textarea id="wamessage" placeholder="Digite a mensagem..." style="width:100%;min-height:80px"></textarea>
+<button onclick="sendWA()">Enviar mensagem</button><button class="secondary" onclick="cancelReply()">Cancelar resposta</button>
+<p><small>Dê dois cliques em uma mensagem para responder citando. Anexos e áudios serão adicionados depois.</small></p></div></div></div><div id="view-busca"><h2>Pesquisa integrada</h2><div class="card"><label>Nome do contato, telefone, empresa, código ou documento</label>
 <input id="q" placeholder="Digite para pesquisar..." oninput="pesquisar()"><div id="results"></div></div></div>
 <div id="view-empresas" class="hidden"><h2>Empresas</h2><div class="card">
 <h3>Novo cadastro</h3><div class="cols"><label>Código da empresa<input id="ecodigo" placeholder="Ex.: 698"></label>
@@ -55,7 +62,7 @@ async function api(url,opts={}){let r=await fetch(url,opts);let d=await r.json()
 const json=(method,body)=>({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
 function aviso(text,ok=false){$('feedback').textContent=text;$('feedback').className=ok?'ok':''}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]))}
-function tab(t){for(let x of ['busca','empresas','contatos','importar']){$('view-'+x).classList.toggle('hidden',x!==t);$('menu-'+x).classList.toggle('active',x===t)}aviso('');if(t==='busca')pesquisar();else atualizar()}
+function tab(t){for(let x of ['whatsapp','busca','empresas','contatos','importar']){$('view-'+x).classList.toggle('hidden',x!==t);$('menu-'+x).classList.toggle('active',x===t)}aviso('');if(t==='busca')pesquisar();else atualizar()}
 async function atualizar(){try{[empresas,contatos]=await Promise.all([api('/api/empresas'),api('/api/contatos')]);
 $('listaempresas').innerHTML=empresas.map(e=>'<div class="item"><b>'+escapeHtml(e.nome)+'</b><br><small>Código '+escapeHtml(e.codigo)+' · '+escapeHtml(e.tipo)+' '+escapeHtml(e.documento)+'</small></div>').join('')||'Nenhuma empresa cadastrada.';
 $('listacontatos').innerHTML=contatos.map(c=>'<div class="item"><b>'+escapeHtml(c.nome)+'</b> · '+escapeHtml(c.telefone)+'<br>'+badges(c.empresas)+'</div>').join('')||'Nenhum contato cadastrado.';
@@ -69,5 +76,28 @@ async function criarContato(){try{await api('/api/contatos',json('POST',{nome:$(
 async function vincular(){try{await api('/api/vinculos',json('POST',{contato_id:$('selcontato').value,empresa_id:$('selempresa').value,funcao:$('cfuncao').value}));aviso('Vínculo salvo.',true);await atualizar()}catch(e){aviso(e.message)}}
 async function previa(){let f=$('arquivo').files[0];if(!f){aviso('Selecione um arquivo.');return}let fd=new FormData();fd.append('arquivo',f);try{let result=await api('/api/importar/previa',{method:'POST',body:fd});linhas=result.linhas;$('prevbox').classList.remove('hidden');let bad=linhas.filter(x=>['conflito','invalido'].includes(x.status)).length;$('resumo').textContent=linhas.length+' linhas · '+bad+' impedimentos';$('confirmar').disabled=bad>0;$('prevrows').innerHTML=linhas.map(r=>'<tr><td>'+r.linha+'</td><td>'+escapeHtml(r.codigo)+'</td><td>'+escapeHtml(r.nome)+'</td><td>'+escapeHtml(r.tipo)+'</td><td>'+escapeHtml(r.documento)+'</td><td>'+escapeHtml(r.status)+' — '+escapeHtml(r.detalhe)+'</td></tr>').join('');aviso(bad?'Corrija os impedimentos antes de importar.':'Prévia pronta.',!bad)}catch(e){aviso(e.message)}}
 async function confirmar(){try{let d=await api('/api/importar/confirmar',json('POST',{linhas}));$('prevbox').classList.add('hidden');aviso(d.importados+' empresas processadas.',true);await atualizar()}catch(e){aviso(e.message)}}
+
+let waState={status:'iniciando',conversations:[]},waChat=null,quoted=null;
+function waStartup(){if(!window.desktopApi){$('wastatus').textContent='Disponível somente no aplicativo desktop';return;}
+ window.desktopApi.onState(s=>{waState=s;renderWA()});
+ window.desktopApi.getState().then(s=>{if(s){waState=s;renderWA()}});}
+function renderWA(){
+ $('wastatus').textContent=waState.status||'iniciando';
+ $('waerror').textContent=waState.error||'';
+ $('qrarea').innerHTML=waState.qr?'<img alt="QR Code WhatsApp" style="max-width:300px" src="'+waState.qr+'">':'';
+ $('wachats').innerHTML=(waState.conversations||[]).map(c=>'<div class="item" style="cursor:pointer" data-chat="'+escapeHtml(c.id)+'">'+escapeHtml(c.name)+'<br><small>'+escapeHtml(c.messages?.at(-1)?.body||'')+'</small></div>').join('')||'<small>Nenhuma conversa carregada.</small>';
+ $('wachats').querySelectorAll('[data-chat]').forEach(el=>el.onclick=()=>{waChat=el.getAttribute('data-chat');quoted=null;renderWA()});
+ let chat=(waState.conversations||[]).find(c=>c.id===waChat);
+ $('wachattitle').textContent=chat?.name||'Selecione uma conversa';
+ $('wamessages').innerHTML=(chat?.messages||[]).map((m,i)=>'<div class="item" style="text-align:'+(m.fromMe?'right':'left')+';cursor:pointer" data-msg="'+i+'">'+escapeHtml(m.body)+'</div>').join('');
+ $('wamessages').querySelectorAll('[data-msg]').forEach(el=>el.ondblclick=()=>{
+  let m=chat.messages[Number(el.getAttribute('data-msg'))];quoted=m?.id||null;
+  $('wareply').textContent='Respondendo: '+(m?.body||'').slice(0,100);$('wamessage').focus();
+ });}
+function cancelReply(){quoted=null;$('wareply').textContent=''}
+async function sendWA(){if(!window.desktopApi||!waChat){aviso('Escolha uma conversa.');return}
+ try{await window.desktopApi.sendMessage({chatId:waChat,text:$('wamessage').value,quotedId:quoted});$('wamessage').value='';cancelReply();aviso('Mensagem enviada.',true)}catch(e){aviso(e.message)}}
+waStartup();
+
 atualizar().then(pesquisar);
 </script></body></html>
