@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comunicação Clientes v0.1.0</title>
+<style>
+:root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
+*{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
+main{display:grid;grid-template-columns:310px 1fr;min-height:calc(100vh - 67px)}
+aside{background:#fff;border-right:1px solid #d5dedb;padding:20px}
+section{padding:26px;max-width:1100px;width:100%}h2{margin:0 0 16px}
+button{background:#087d6e;color:white;border:0;border-radius:7px;padding:10px 14px;cursor:pointer;font-weight:600}
+button.secondary{background:#e0ebe8;color:#075e54}input,select{padding:11px;border:1px solid #b8cbc5;border-radius:6px;width:100%;margin:5px 0 12px;font:inherit}
+.card{background:white;border-radius:10px;padding:18px;margin-bottom:16px;box-shadow:0 2px 8px #152d2b12}
+nav button{display:block;width:100%;text-align:left;margin:9px 0}nav button.active{background:#075e54}
+.item{padding:12px;border-bottom:1px solid #e4eae7}small{color:#657773}.tag{display:inline-block;background:#e0f3ee;color:#075e54;border-radius:14px;margin:3px 5px 3px 0;padding:4px 10px;font-size:12px}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.hidden{display:none}table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:9px;border-bottom:1px solid #ddd;text-align:left}th{background:#e8f0ed}
+#feedback{color:#8a4515;min-height:24px;white-space:pre-wrap}.ok{color:#087d6e!important}.warning{color:#ad450e}
+@media(max-width:760px){main{display:block}.cols,.grid3{grid-template-columns:1fr}}
+</style></head>
+<body><header>◉ Comunicação Clientes <small style="color:#d9ffec">v0.1.0 · cadastros</small></header>
+<main><aside><h3>Central de atendimento</h3><p><small>Primeira versão: base cadastral. Mensagens WhatsApp e QR Code ainda não habilitados.</small></p>
+<nav><button onclick="tab('busca')" id="menu-busca" class="active">Pesquisar contatos</button>
+<button onclick="tab('empresas')" id="menu-empresas">Empresas</button>
+<button onclick="tab('contatos')" id="menu-contatos">Contatos e vínculos</button>
+<button onclick="tab('importar')" id="menu-importar">Importar Excel</button></nav></aside>
+<section>
+<div id="feedback"></div>
+<div id="view-busca"><h2>Pesquisa integrada</h2><div class="card"><label>Nome do contato, telefone, empresa, código ou documento</label>
+<input id="q" placeholder="Digite para pesquisar..." oninput="pesquisar()"><div id="results"></div></div></div>
+<div id="view-empresas" class="hidden"><h2>Empresas</h2><div class="card">
+<h3>Novo cadastro</h3><div class="cols"><label>Código da empresa<input id="ecodigo" placeholder="Ex.: 698"></label>
+<label>Nome da empresa<input id="enome"></label></div><div class="cols">
+<label>Tipo de inscrição<select id="etipo"><option>CNPJ</option><option>CPF</option><option>CAEPF</option><option>CEI</option></select></label>
+<label>Número da inscrição<input id="edoc" placeholder="Somente números ou formatado"></label></div>
+<button onclick="criarEmpresa()">Cadastrar empresa</button></div><div class="card"><h3>Empresas cadastradas</h3><div id="listaempresas"></div></div></div>
+<div id="view-contatos" class="hidden"><h2>Contatos e vínculos</h2><div class="card">
+<h3>Novo contato</h3><div class="cols"><label>Nome<input id="cnome"></label><label>Telefone com DDD<input id="ctel"></label></div>
+<button onclick="criarContato()">Cadastrar contato</button></div><div class="card"><h3>Vincular contato a empresa</h3>
+<div class="grid3"><label>Contato<select id="selcontato"></select></label><label>Empresa<select id="selempresa"></select></label>
+<label>Função<input id="cfuncao" placeholder="Ex.: Responsável DP"></label></div>
+<button onclick="vincular()">Salvar vínculo</button></div>
+<div class="card"><h3>Contatos cadastrados</h3><div id="listacontatos"></div></div></div>
+<div id="view-importar" class="hidden"><h2>Importação de empresas</h2>
+<div class="card"><p>Planilha .xlsx com colunas <b>Código</b>, <b>Nome da empresa</b>, <b>Tipo de inscrição</b> e <b>Documento</b>. Não altere zeros à esquerda.</p>
+<input type="file" id="arquivo" accept=".xlsx"><button onclick="previa()">Analisar Excel</button></div>
+<div class="card hidden" id="prevbox"><h3>Prévia da importação</h3><p id="resumo"></p>
+<div style="overflow:auto"><table><thead><tr><th>Linha</th><th>Código</th><th>Nome</th><th>Tipo</th><th>Documento</th><th>Situação</th></tr></thead><tbody id="prevrows"></tbody></table></div>
+<p><small>Conflitos e linhas inválidas bloqueiam a confirmação. Corrija o Excel e analise novamente.</small></p>
+<button id="confirmar" onclick="confirmar()">Confirmar importação</button></div></div>
+</section></main>
+<script>
+let empresas=[],contatos=[],linhas=[];
+const $=id=>document.getElementById(id);
+async function api(url,opts={}){let r=await fetch(url,opts);let d=await r.json();if(!r.ok)throw Error(d.erro||'Falha na operação');return d}
+const json=(method,body)=>({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+function aviso(text,ok=false){$('feedback').textContent=text;$('feedback').className=ok?'ok':''}
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]))}
+function tab(t){for(let x of ['busca','empresas','contatos','importar']){$('view-'+x).classList.toggle('hidden',x!==t);$('menu-'+x).classList.toggle('active',x===t)}aviso('');if(t==='busca')pesquisar();else atualizar()}
+async function atualizar(){try{[empresas,contatos]=await Promise.all([api('/api/empresas'),api('/api/contatos')]);
+$('listaempresas').innerHTML=empresas.map(e=>'<div class="item"><b>'+escapeHtml(e.nome)+'</b><br><small>Código '+escapeHtml(e.codigo)+' · '+escapeHtml(e.tipo)+' '+escapeHtml(e.documento)+'</small></div>').join('')||'Nenhuma empresa cadastrada.';
+$('listacontatos').innerHTML=contatos.map(c=>'<div class="item"><b>'+escapeHtml(c.nome)+'</b> · '+escapeHtml(c.telefone)+'<br>'+badges(c.empresas)+'</div>').join('')||'Nenhum contato cadastrado.';
+$('selempresa').innerHTML=empresas.map(e=>'<option value="'+e.id+'">'+escapeHtml(e.codigo)+' - '+escapeHtml(e.nome)+'</option>').join('');
+$('selcontato').innerHTML=contatos.map(c=>'<option value="'+c.id+'">'+escapeHtml(c.nome)+' - '+escapeHtml(c.telefone)+'</option>').join('');
+}catch(e){aviso(e.message)}}
+function badges(arr){return arr.length?arr.map(e=>'<span class="tag">'+escapeHtml(e.nome)+(e.funcao?' · '+escapeHtml(e.funcao):'')+'</span>').join(''):'<small>Sem empresa vinculada</small>'}
+async function pesquisar(){try{let q=$('q').value;let rows=await api('/api/pesquisa?q='+encodeURIComponent(q));$('results').innerHTML=rows.map(c=>'<div class="item"><b>'+escapeHtml(c.nome)+'</b> · <small>'+escapeHtml(c.telefone)+'</small><br>'+badges(c.empresas)+'</div>').join('')||'<p>Nenhum contato encontrado.</p>'}catch(e){aviso(e.message)}}
+async function criarEmpresa(){try{await api('/api/empresas',json('POST',{codigo:$('ecodigo').value,nome:$('enome').value,tipo:$('etipo').value,documento:$('edoc').value}));aviso('Empresa cadastrada.',true);await atualizar()}catch(e){aviso(e.message)}}
+async function criarContato(){try{await api('/api/contatos',json('POST',{nome:$('cnome').value,telefone:$('ctel').value}));aviso('Contato cadastrado.',true);await atualizar()}catch(e){aviso(e.message)}}
+async function vincular(){try{await api('/api/vinculos',json('POST',{contato_id:$('selcontato').value,empresa_id:$('selempresa').value,funcao:$('cfuncao').value}));aviso('Vínculo salvo.',true);await atualizar()}catch(e){aviso(e.message)}}
+async function previa(){let f=$('arquivo').files[0];if(!f){aviso('Selecione um arquivo.');return}let fd=new FormData();fd.append('arquivo',f);try{let result=await api('/api/importar/previa',{method:'POST',body:fd});linhas=result.linhas;$('prevbox').classList.remove('hidden');let bad=linhas.filter(x=>['conflito','invalido'].includes(x.status)).length;$('resumo').textContent=linhas.length+' linhas · '+bad+' impedimentos';$('confirmar').disabled=bad>0;$('prevrows').innerHTML=linhas.map(r=>'<tr><td>'+r.linha+'</td><td>'+escapeHtml(r.codigo)+'</td><td>'+escapeHtml(r.nome)+'</td><td>'+escapeHtml(r.tipo)+'</td><td>'+escapeHtml(r.documento)+'</td><td>'+escapeHtml(r.status)+' — '+escapeHtml(r.detalhe)+'</td></tr>').join('');aviso(bad?'Corrija os impedimentos antes de importar.':'Prévia pronta.',!bad)}catch(e){aviso(e.message)}}
+async function confirmar(){try{let d=await api('/api/importar/confirmar',json('POST',{linhas}));$('prevbox').classList.add('hidden');aviso(d.importados+' empresas processadas.',true);await atualizar()}catch(e){aviso(e.message)}}
+atualizar().then(pesquisar);
+</script></body></html>
