@@ -24,7 +24,18 @@ async function resolvePhoto(client,ids,{fetchImage=fetchPhotoBytes}={}){
  let urlFallback=null,lastError=null;
  for(const id of [...new Set(ids.filter(Boolean))]){
   try{
-   const url=await client.getProfilePicUrl(id);
+   let url;
+   try{url=await client.getProfilePicUrl(id);}catch(error){lastError=error;}
+   // v1.34.7 serializes the Chat before passing it to the photo bridge.
+   // Current WhatsApp Web requires the internal Chat instance instead.
+   if(!url&&client.pupPage){
+    url=await client.pupPage.evaluate(async contactId=>{
+     const chat=await window.WWebJS.getChat(contactId,{getAsModel:false});
+     if(!chat)return null;
+     const picture=await window.require('WAWebContactProfilePicThumbBridge').requestProfilePicFromServer(chat);
+     return picture?.eurl||null;
+    },id);
+   }
    if(typeof url!=='string'||!url.startsWith('https://'))continue;
    const embedded=await fetchPhotoInSession(client.pupPage,url)||await fetchImage(url);
    if(typeof embedded==='string'&&DATA_IMAGE.test(embedded))return {image:embedded,status:'loaded'};
@@ -32,6 +43,6 @@ async function resolvePhoto(client,ids,{fetchImage=fetchPhotoBytes}={}){
   }catch(error){lastError=error;}
  }
  // Keep an external URL as fallback, but never cache missing/error results forever.
- return {image:urlFallback,status:urlFallback?'external':lastError?'error':'unavailable'};
+ return {image:urlFallback,status:urlFallback?'external':lastError?'error':'unavailable',error:lastError?.message||null};
 }
 module.exports={DATA_IMAGE,fetchPhotoInSession,fetchPhotoBytes,resolvePhoto};

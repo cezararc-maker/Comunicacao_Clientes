@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.5.2 — aplicativo desktop (teste)
+# Comunicação Clientes v0.5.3 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -30,7 +30,9 @@ São exibidas somente mensagens com timestamp a partir de **09/10/2026 às 01:00
 
 A barra de progresso mede etapas concluídas: consulta dos contatos, identificação dos nomes, atualização dos cadastros, mensagens e fotos. Antes da conexão, os controles de sincronização e fotos ficam desabilitados; a sincronização começa automaticamente após o evento de conexão pronta. Solicitações simultâneas compartilham a mesma execução. Falhas aparecem como pendências, sem confundir 100% das etapas processadas com sucesso de todas as consultas.
 
-Fotos são consultadas pelos identificadores de telefone e LID. O aplicativo tenta carregar os bytes na sessão autenticada e por uma consulta direta alternativa, usando uma imagem incorporada para evitar depender da URL temporária no painel. Resultados sem foto não ficam bloqueados permanentemente no cache. O painel informa fotos carregadas ou indisponíveis. O funcionamento com as duas fotos reais ainda precisa ser validado no WhatsApp conectado.
+Fotos são consultadas pelos identificadores de telefone e LID. O aplicativo tenta carregar os bytes na sessão autenticada e por uma consulta direta alternativa, usando uma imagem incorporada para evitar depender da URL temporária no painel. Resultados sem foto não ficam bloqueados permanentemente no cache. O painel informa fotos carregadas ou indisponíveis.
+
+Na v0.5.3, a consulta usa o objeto interno de conversa como alternativa à serialização incompatível da whatsapp-web.js 1.34.7. O mesmo ajuste permite consultar a conversa quando a biblioteca falha ao resolver a última mensagem. Os identificadores retornados pelo WhatsApp, inclusive números brasileiros sem o nono dígito, são associados ao cadastro solicitado sem alterar telefone, ID ou vínculos no banco. Em diagnóstico na sessão real, as duas fotos de teste foram recuperadas com HTTP 200 e incorporadas como JPEG. A consulta foi feita em segundo plano, sem nova sessão, envio de mensagens ou exclusão de dados.
 
 ## Não implementado
 

@@ -9,6 +9,7 @@ const QRCode = require('qrcode');
 const {usableName,buildDirectory,conversationName}=require('./contact_names');
 const {PHONES,SINCE,phoneInScope,messageInScope}=require('./sync_scope');
 const {resolvePhoto}=require('./profile_photos');
+const {getScopedChat}=require('./whatsapp_compat');
 let window, pythonProcess, client;
 let restarting=false, initializing=false,syncJob=null;
 const allowedChatIds=new Set(PHONES.map(p=>p+'@c.us'));
@@ -29,6 +30,7 @@ async function profilePhoto(id){
   const aliases=[...contactDirectory].filter(([key,c])=>c.phone===phone).map(([key])=>key);
   const result=await resolvePhoto(activeClient,[id,phone+'@c.us',...aliases]);
   photoDiagnostics[phone]=result.status;update({photos:{...photoDiagnostics}});
+  if(result.error&&!result.image)console.error('Foto de teste:',phone,result.error);
   if(result.image)profileCache.set(phone,{image:result.image,time:Date.now()});
   return result.image;
  })();
@@ -86,7 +88,7 @@ async function performScopedSync(){
    let id=phone+'@c.us';
    try{const number=await client.getNumberId(phone);if(!number)throw Error('Número indisponível no WhatsApp');id=number._serialized;allowedChatIds.add(id);
     const contact=await client.getContactById(id);contacts.push(contact);const target={phone,id,contact,chat:null};targets.push(target);
-    try{const chat=await client.getChatById(id);if(chat){chats.push(chat);target.chat=chat;allowedChatIds.add(chat.id._serialized);}}
+    try{const chat=await getScopedChat(client,contact.id?._serialized||id);if(chat){chats.push(chat);target.chat=chat;allowedChatIds.add(chat.id._serialized);}}
     catch(error){errors.push('Conversa '+phone);console.error('Conversa de teste:',phone,error.message);const chat={id:{_serialized:id,user:phone},name:contact.name,isGroup:false,fetchMessages:async()=>[]};chats.push(chat);target.chat=chat;}
    }catch(error){errors.push('Contato '+phone);console.error('Contato de teste:',phone,error.message);}
    step('Contatos consultados: '+contacts.length+' de '+PHONES.length);
@@ -95,7 +97,10 @@ async function performScopedSync(){
   for(const target of targets){const details={...(contactDirectory.get(target.id)||contactDirectory.get(target.contact.id?._serialized)||{}),phone:target.phone};for(const alias of [target.id,target.contact.id?._serialized,target.chat?.id?._serialized,target.phone+'@c.us'].filter(Boolean)){contactDirectory.set(alias,details);allowedChatIds.add(alias);}}
   if(typeof client.getContactLidAndPhone==='function'){
    try{for(const pair of await client.getContactLidAndPhone([...allowedChatIds])){
-    if(pair.lid&&pair.pn&&allowedChatIds.has(pair.pn)){allowedChatIds.add(pair.lid);const details=contactDirectory.get(pair.pn);if(details)contactDirectory.set(pair.lid,details);}
+    const details=contactDirectory.get(pair.lid)||contactDirectory.get(pair.pn);
+    if(pair.lid&&pair.pn&&details&&phoneInScope(details.phone)){
+     for(const alias of [pair.lid,pair.pn]){allowedChatIds.add(alias);contactDirectory.set(alias,details);}
+    }
    }}catch(error){console.error('Identificadores de teste:',error.message);}
   }
   step('Nomes dos contatos identificados');

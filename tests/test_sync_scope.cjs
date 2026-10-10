@@ -18,8 +18,9 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../desktop.js'),'utf8')+`
 window={isDestroyed:()=>false,webContents:{id:1,send:(_name,state)=>collect(state)}};
 client={
  getContacts:()=>{throw Error('Must not scan all contacts')},getChats:()=>{throw Error('Must not scan all chats')},
- getNumberId:async p=>{queried.push(p);return {_serialized:p+'@c.us'}},
- getContactById:async id=>({id:{_serialized:id,user:id.split('@')[0]},name:'Contato '+id.split('@')[0]}),
+ getNumberId:async p=>{queried.push(p);return {_serialized:(p==='${PHONES[0]}'?'111':'222')+'@lid'}},
+ getContactById:async id=>{const phone=id==='111@lid'?'${PHONES[0]}':'${PHONES[1]}';const pn=phone.slice(0,4)+phone.slice(5);return {id:{_serialized:pn+'@c.us',user:pn},name:'Contato '+phone}},
+ getContactLidAndPhone:async()=>[{lid:'111@lid',pn:'${PHONES[0].slice(0,4)+PHONES[0].slice(5)}@c.us'},{lid:'222@lid',pn:'${PHONES[1].slice(0,4)+PHONES[1].slice(5)}@c.us'}],
  getChatById:async id=>({id:{_serialized:id,user:id.split('@')[0]},name:id,isGroup:false,lastMessage:{timestamp:${SINCE}+1},fetchMessages:async options=>{if(options.limit!==100)throw Error('History must be bounded');return [{id:{_serialized:'old-'+id},from:id,timestamp:${SINCE}-1,body:'antiga'},{id:{_serialized:'new-'+id},from:id,timestamp:${SINCE},body:'nova'}]}}),
  getProfilePicUrl:async()=>null
 };
@@ -35,5 +36,7 @@ const event={sender:{id:1,getURL:()=>'http://127.0.0.1:8765/'}};
  const progress=states.filter(s=>s.syncProgress.running).map(s=>s.syncProgress.percent);assert(progress.every((p,i)=>i===0||p>=progress[i-1]));
  vm.runInContext("storeMessage({from:'5567988888888@c.us',timestamp:SINCE+1,body:'outside'});storeMessage({from:'12345@g.us',timestamp:SINCE+1,body:'group'});",sandbox);
  assert.equal(states.at(-1).conversations.length,2);
+ vm.runInContext("storeMessage({id:{_serialized:'lid-new'},from:'111@lid',timestamp:SINCE+1,body:'LID nova'});",sandbox);
+ assert(states.at(-1).conversations.some(c=>c.messages.some(m=>m.body==='LID nova')));
  console.log('Scoped sync: only two contacts queried, no broad scans, cutoff/timezone, old messages excluded, offline response and monotonic measured progress passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});
