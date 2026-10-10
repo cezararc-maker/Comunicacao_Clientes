@@ -108,6 +108,23 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]['empresas'][0]['nome'], 'Empresa preservada')
 
+    def test_sync_repairs_only_numeric_names_without_changing_links(self):
+        with server.connect() as db:
+            db.execute("UPDATE contatos SET nome='67999999999' WHERE id=1")
+        os.environ['WA_SYNC_TOKEN'] = 'test-only-token'
+        response = self.client.post('/api/whatsapp/sync', headers={'X-Sync-Token': 'test-only-token'}, json={
+            'contatos': [{'nome': 'Nome salvo no celular', 'telefone': '5567999999999'}]})
+        self.assertEqual(response.json['nomes_atualizados'], 1)
+        contact = self.client.get('/api/contatos').json[0]
+        self.assertEqual(contact['nome'], 'Nome salvo no celular')
+        self.assertEqual(contact['id'], 1)
+        self.assertEqual(contact['telefone'], '67999999999')
+        self.assertEqual(contact['empresas'][0]['funcao'], 'Responsável')
+        again = self.client.post('/api/whatsapp/sync', headers={'X-Sync-Token': 'test-only-token'}, json={
+            'contatos': [{'nome': 'Nome público diferente', 'telefone': '5567999999999'}]})
+        self.assertEqual(again.json['nomes_atualizados'], 0)
+        self.assertEqual(self.client.get('/api/contatos').json[0]['nome'], 'Nome salvo no celular')
+
 
 if __name__ == '__main__':
     unittest.main()

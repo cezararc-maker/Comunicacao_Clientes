@@ -265,13 +265,13 @@ def sync_whatsapp_contacts():
     items = data.get("contatos", [])
     if not isinstance(items, list) or len(items) > 20000:
         return jsonify(erro="Lista inválida"), 400
-    novos, existentes = 0, 0
+    novos, existentes, nomes_atualizados = 0, 0, 0
     with connect() as db:
         db.execute('BEGIN IMMEDIATE')
-        known = set()
-        for row in db.execute('SELECT telefone FROM contatos'):
+        known = {}
+        for row in db.execute('SELECT id,nome,telefone FROM contatos'):
             try:
-                known.add(phone_key(row['telefone']))
+                known[phone_key(row['telefone'])] = row
             except ValueError:
                 continue
         for item in items:
@@ -285,14 +285,19 @@ def sync_whatsapp_contacts():
             if not 10 <= len(phone) <= 15:
                 continue
             if phone in known:
+                old = known[phone]
+                if name and not re.fullmatch(r'[+\d\s().-]+', name) and re.fullmatch(r'[+\d\s().-]+', old['nome']):
+                    db.execute('UPDATE contatos SET nome=? WHERE id=?', (name, old['id']))
+                    known[phone] = {'id': old['id'], 'nome': name}
+                    nomes_atualizados += 1
                 existentes += 1
                 continue
             if not name:
                 name = phone
-            db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (name,'+' + phone))
-            known.add(phone)
+            inserted = db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (name,'+' + phone))
+            known[phone] = {'id': inserted.lastrowid, 'nome': name}
             novos += 1
-    return jsonify(ok=True,novos=novos,existentes=existentes)
+    return jsonify(ok=True,novos=novos,existentes=existentes,nomes_atualizados=nomes_atualizados)
 
 
 @app.post('/api/contatos/importar/previa')

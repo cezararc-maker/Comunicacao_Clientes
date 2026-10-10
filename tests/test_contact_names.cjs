@@ -1,0 +1,21 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {usableName,contactDetails,buildDirectory,conversationName}=require('../contact_names');
+(async()=>{
+ const contact={id:{_serialized:'5567988888888@c.us',user:'5567988888888'},name:'Nome no celular',pushname:'Nome público'};
+ const lid={id:{_serialized:'123456789012345@lid',user:'123456789012345'},number:'123456789012345',name:'Contato LID'};
+ const chats=[{id:contact.id,name:'5567988888888',getContact:async()=>contact},{id:lid.id,name:'123456789012345',getContact:async()=>lid},{id:{_serialized:'5567977777777@c.us',user:'5567977777777'},name:'5567977777777',getContact:async()=>({id:{_serialized:'5567977777777@c.us'},name:'Recuperado pelo chat'})}];
+ const client={getContactLidAndPhone:async()=>[{lid:lid.id._serialized,pn:'5567966666666@c.us'}]};
+ const directory=await buildDirectory(client,[contact,lid],chats);
+ assert.equal(conversationName(chats[0],directory.get(contact.id._serialized),'Nome local'),'Nome no celular');
+ assert.equal(directory.get(lid.id._serialized).phone,'5567966666666');
+ assert.equal(directory.get('5567966666666@c.us').savedName,'Contato LID');
+ assert.equal(directory.get(chats[2].id._serialized).savedName,'Recuperado pelo chat');
+ assert.equal(contactDetails(lid).phone,'');
+ assert.equal(conversationName({isGroup:true,name:'Empresa',id:{user:'123'}},{savedName:'Participante'}),'Empresa');
+ assert.equal(conversationName(chats[0],{publicName:'Público'},'Cadastro manual'),'Cadastro manual');
+ assert.equal(usableName('+55 (67) 99999-9999'),'');
+ const fallback=await buildDirectory({getContactLidAndPhone:async()=>{throw Error('unavailable')}},[lid],[]);
+ assert.equal(fallback.get(lid.id._serialized).phone,'');
+ console.log('Contact names: saved name priority, public/local fallbacks, groups, chat lookup, LID mapping and unmapped-ID safety passed.');
+})().catch(e=>{console.error(e);process.exitCode=1});
