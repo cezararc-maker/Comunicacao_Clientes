@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.11.0 — aplicativo desktop (teste)
+# Comunicação Clientes v0.12.0 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -105,8 +105,12 @@ A cópia visual congelada inclui o cabeçalho com foto/nome, o histórico da con
 - Limitação: a API whatsapp-web.js não expõe favoritos de figurinhas/GIFs nem o histórico do teclado de emojis do celular. A biblioteca de recentes usa somente mensagens dentro do escopo atual; não lê favoritos do celular e não importa conversas antigas. Uma figurinha favorita só aparece quando enviada/recebida no período sincronizado.
 - Atualização mantém o banco, mídias, vínculos e sessão. Testes de envio usam cliente simulado e não disparam mensagens reais.
 
-### Links, notificações e captura na v0.11.0
+### Links, notificações e captura na v0.12.0
 Mensagens reconhecem links HTTP/HTTPS, www e `[rótulo](https://...)`; o clique abre o navegador padrão. O texto continua sendo texto e não executa HTML recebido. Protocolos diferentes de HTTP/HTTPS não abrem externamente.
 Avisos temporários surgem em balão com ×. Mensagens recebidas com o aplicativo em segundo plano também produzem um balão na área de trabalho, sem ativar a janela ou tomar o foco. Não há alerta para restauração de histórico, mensagens repetidas ou envios próprios. Após 5 segundos, somem com expansão e partículas de bolha; o fechamento manual usa fragmentos de vidro. A opção de movimento reduzido do Windows é respeitada. Confirmações rotineiras de envio continuam ocultas.
 O balão com todos os vínculos empresariais aparece após 1 segundo sem movimento em qualquer parte do cartão da conversa; movimento, rolagem ou saída ocultam o balão.
 Captura inclui cabeçalho com foto/nome e caixa de texto, além do intervalo de mensagens escolhido. PNGs continuam divididos em partes quando necessário. PDF imprime o conteúdo HTML em páginas A4 com texto selecionável, sem transformar as mensagens em imagem; imagens e fotos continuam sendo imagens. O cabeçalho aparece no início e a caixa de texto no final da captura. Capturas usam cópia congelada, sem mudar o histórico ou o texto em edição.
+
+### Fixações e envio rápido na v0.12.0
+Figurinhas e GIFs da lista são enviados diretamente ao clicar, sem segunda confirmação; arquivos escolhidos como figurinha/GIF também enviam após a seleção. Outros anexos mantêm a prévia. Envios simultâneos são bloqueados e falhas mostram aviso temporário.
+Fixações têm opções de 1 hora, 7 dias e 30 dias. A faixa e o balão da mensagem ficam amarelos como marca-texto. O contador atualiza a cada segundo em HH:MM:SS; para 30 dias mostra também a data/hora final e dias restantes, mudando para HH:MM:SS nas últimas 24 horas. A duração é persistida por migração aditiva, preservando fixações, mensagens e dados existentes.

@@ -69,6 +69,7 @@ function renderMessages(chat){
   if(area.children[rowIndex]!==node)area.insertBefore(node,area.children[rowIndex]||null);rowIndex++;
   const cached=mediaViews.get(m.id);if(cached&&node.querySelector('.load-media'))showMedia(node,{...m,filename:mediaNames.get(m.id)||m.filename},cached);else if(m.hasMedia&&!m.pending&&m.ack!==-1&&node.querySelector('.load-media'))scheduleMedia(node,m,chat.id);
  });
+ for(const row of area.querySelectorAll('.message-row'))row.classList.toggle('pinned-message',pinnedMessages.some(p=>p.conversa_id===chat.id&&p.mensagem_id===row.dataset.id&&p.expira>Date.now()/1000));
  if(changed||(added&&atBottom))area.scrollTop=area.scrollHeight;
  if(atBottom||changed)$('new-messages').classList.add('hidden');else if(added)$('new-messages').classList.remove('hidden');
  document.querySelectorAll('[data-media-action]').forEach(b=>b.disabled=waState.status!=='conectado'||mediaSending);updateComposer();
@@ -84,7 +85,7 @@ function presentMedia(draft){
 }
 async function chooseMedia(kind){
  if(!window.desktopApi||!waChat){aviso('Escolha uma conversa.');return;}if(mediaSending)return;stopVoice(true);closeMedia();$('attachment-panel').classList.add('hidden');$('sticker-panel').classList.add('hidden');const chatId=waChat;
- try{const selected=await window.desktopApi.selectMedia({kind});if(!selected.canceled&&waChat===chatId)presentMedia({...selected,chatId,quotedId:quoted});else window.desktopApi.discardMedia().catch(()=>{});}catch(error){aviso(error.message);}
+ try{const selected=await window.desktopApi.selectMedia({kind});if(!selected.canceled&&waChat===chatId){if(['sticker','gif'].includes(kind))await sendInstantMedia({...selected,chatId,quotedId:quoted});else presentMedia({...selected,chatId,quotedId:quoted});}else window.desktopApi.discardMedia().catch(()=>{});}catch(error){aviso(error.message);}
 }
 async function sendPreparedMedia(){
  if(!mediaDraft||mediaSending)return;const draft=mediaDraft;mediaSending=true;$('media-send').disabled=true;const id=queueOutgoing(draft.chatId,{body:$('media-caption').value,type:draft.kind==='voice'?'ptt':draft.kind==='clipboard'?'image':draft.kind==='gif'?'video':draft.kind,hasMedia:true,mediaLabel:$('media-title').textContent});
