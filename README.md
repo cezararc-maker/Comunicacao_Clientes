@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.8.1 — aplicativo desktop (teste)
+# Comunicação Clientes v0.8.2 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -75,3 +75,6 @@ A sincronização geral permanece desativada durante os testes. Quando for liber
 
 
 Na v0.8.1, as faixas empresariais ajustam sua largura ao texto, com bordas completamente arredondadas e formato Código · Empresa / função. O balão reúne todos os vínculos do telefone do contato, inclusive registros equivalentes existentes, sem limitar a lista à primeira empresa.
+
+
+Na v0.8.2, clicar no nome do contato ou grupo abre as informações em uma coluna lateral direita, mantendo a conversa visível. O painel mostra telefone e vínculos do contato ou descrição/membros/administração do grupo. O botão Dados do grupo foi retirado; confirmações de alterações de membros permanecem explícitas. Os controles da janela ficam no canto superior direito.
