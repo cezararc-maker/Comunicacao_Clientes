@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comunicação Clientes v0.2.0</title>
+<title>Comunicação Clientes v0.2.1</title>
 <style>
 :root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
 *{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
@@ -16,8 +16,15 @@ nav button{display:block;width:100%;text-align:left;margin:9px 0}nav button.acti
 .hidden{display:none}table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:9px;border-bottom:1px solid #ddd;text-align:left}th{background:#e8f0ed}
 #feedback{color:#8a4515;min-height:24px;white-space:pre-wrap}.ok{color:#087d6e!important}.warning{color:#ad450e}
 @media(max-width:760px){main{display:block}.cols,.grid3{grid-template-columns:1fr}}
+
+.status-pill{display:inline-flex;align-items:center;gap:10px;padding:9px 17px;border-radius:9999px;font-weight:700;font-size:14px;line-height:1.15;border:1px solid transparent}
+.status-dot{display:inline-block;flex-shrink:0;width:12px;height:12px;border-radius:50%}
+.status-connected{color:#106b32;background:linear-gradient(180deg,#edfff0,#d7ffdf);border-color:#93e9a4;box-shadow:inset 0 0 10px #6dff8a33,0 0 10px #44dd5a33}
+.status-connected .status-dot{background:#10c746;box-shadow:0 0 5px #0dcb46,0 0 12px #17df5d,0 0 18px #30ff7155}
+.status-disconnected{color:#ad2424;background:linear-gradient(180deg,#fff0f0,#ffdddd);border-color:#f0aaaa;box-shadow:inset 0 0 10px #ff777733,0 0 10px #ff555522}
+.status-disconnected .status-dot{background:#e53935;box-shadow:0 0 5px #e53935,0 0 12px #f44844,0 0 18px #ff666655}
 </style></head>
-<body><header>◉ Comunicação Clientes <small style="color:#d9ffec">v0.2.0 · cadastros</small></header>
+<body><header>◉ Comunicação Clientes <small style="color:#d9ffec">v0.2.1 · cadastros</small></header>
 <main><aside><h3>Central de atendimento</h3><p><small>Cadastros e conexão por QR Code no aplicativo desktop.</small></p>
 <nav><button onclick="tab('whatsapp')" id="menu-whatsapp">WhatsApp / QR Code</button><button onclick="tab('busca')" id="menu-busca" class="active">Pesquisar contatos</button>
 <button onclick="tab('empresas')" id="menu-empresas">Empresas</button>
@@ -26,7 +33,7 @@ nav button{display:block;width:100%;text-align:left;margin:9px 0}nav button.acti
 <section>
 <div id="feedback"></div>
 <div id="view-whatsapp" class="hidden"><h2>WhatsApp · Conexão e conversas</h2>
-<div class="card"><b>Estado: <span id="wastatus">iniciando</span></b><p id="waerror" class="warning"></p><div id="qrarea"></div>
+<div class="card"><span id="wastatusWrap" class="status-pill status-disconnected" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="wastatus">Desconectado</span></span><p id="waerror" class="warning"></p><div id="qrarea"></div>
 <p><small>Conecte pelo WhatsApp do telefone: Aparelhos conectados → Conectar aparelho. Apenas uma sessão central neste computador.</small></p></div>
 <div class="cols"><div class="card"><h3>Conversas</h3><div id="wachats"></div></div>
 <div class="card"><h3 id="wachattitle">Selecione uma conversa</h3><div id="wamessages" style="height:320px;overflow:auto;background:#f4f6f1;padding:12px;border-radius:6px"></div>
@@ -77,12 +84,14 @@ async function vincular(){try{await api('/api/vinculos',json('POST',{contato_id:
 async function previa(){let f=$('arquivo').files[0];if(!f){aviso('Selecione um arquivo.');return}let fd=new FormData();fd.append('arquivo',f);try{let result=await api('/api/importar/previa',{method:'POST',body:fd});linhas=result.linhas;$('prevbox').classList.remove('hidden');let bad=linhas.filter(x=>['conflito','invalido'].includes(x.status)).length;$('resumo').textContent=linhas.length+' linhas · '+bad+' impedimentos';$('confirmar').disabled=bad>0;$('prevrows').innerHTML=linhas.map(r=>'<tr><td>'+r.linha+'</td><td>'+escapeHtml(r.codigo)+'</td><td>'+escapeHtml(r.nome)+'</td><td>'+escapeHtml(r.tipo)+'</td><td>'+escapeHtml(r.documento)+'</td><td>'+escapeHtml(r.status)+' — '+escapeHtml(r.detalhe)+'</td></tr>').join('');aviso(bad?'Corrija os impedimentos antes de importar.':'Prévia pronta.',!bad)}catch(e){aviso(e.message)}}
 async function confirmar(){try{let d=await api('/api/importar/confirmar',json('POST',{linhas}));$('prevbox').classList.add('hidden');aviso(d.importados+' empresas processadas.',true);await atualizar()}catch(e){aviso(e.message)}}
 
-let waState={status:'iniciando',conversations:[]},waChat=null,quoted=null;
+let waState={status:'desconectado',conversations:[]},waChat=null,quoted=null;
 function waStartup(){if(!window.desktopApi){$('wastatus').textContent='Disponível somente no aplicativo desktop';return;}
  window.desktopApi.onState(s=>{waState=s;renderWA()});
  window.desktopApi.getState().then(s=>{if(s){waState=s;renderWA()}});}
 function renderWA(){
- $('wastatus').textContent=waState.status||'iniciando';
+ const conectado=waState.status==='conectado';
+ $('wastatus').textContent=conectado?'Conectado':'Desconectado';
+ $('wastatusWrap').className='status-pill '+(conectado?'status-connected':'status-disconnected');
  $('waerror').textContent=waState.error||'';
  $('qrarea').innerHTML=waState.qr?'<img alt="QR Code WhatsApp" style="max-width:300px" src="'+waState.qr+'">':'';
  $('wachats').innerHTML=(waState.conversations||[]).map(c=>'<div class="item" style="cursor:pointer" data-chat="'+escapeHtml(c.id)+'">'+escapeHtml(c.name)+'<br><small>'+escapeHtml(c.messages?.at(-1)?.body||'')+'</small></div>').join('')||'<small>Nenhuma conversa carregada.</small>';
