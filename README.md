@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.8.5 — aplicativo desktop (teste)
+# Comunicação Clientes v0.9.0 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -84,3 +84,15 @@ Na v0.8.3, os controles de janela passam a usar círculos de 16 px (antes 13 px)
 Na v0.8.4, o duplo clique em toda a linha responde à mensagem. O menu ⋮ de cada mensagem permite fixar por 1 hora ou 7 dias e desafixar. As demandas ficam no topo da conversa e são preservadas no banco local até expirarem; não são fixações compartilhadas no WhatsApp.
 
 Na v0.8.5, os controles da janela não exibem símbolos e acendem na própria cor ao passar o mouse ou receber foco pelo teclado.
+
+Na v0.9.0, o kit Íon é adaptado à arquitetura existente, sem substituir dados ou funções. Os controles semáforo permanecem à direita na ordem verde/amarelo/vermelho, iluminando no hover. Os ícones de Conversas e Contatos e os controles de clipe/figurinhas são preservados. O SVG Empresas é usado na navegação, no cartão compacto, no balão com todos os vínculos após 1 segundo e no painel lateral; a separação continua com `/`.
+
+O acabamento inclui outros ícones vetoriais, indicador de seleção, horário na lista, balões com cauda, separadores de data e iniciais estáveis por participante de grupo (o telefone/identificador aparece no tooltip para distinguir nomes iguais). Os cinco temas existentes continuam disponíveis sem reinício. A divisão entre a lista e a conversa mantém as larguras responsivas existentes; não há novo arraste de divisória.
+
+**Capturar conversa:** menu ⋮ do cabeçalho → Capturar conversa. Escolha “Da posição atual até o fim” ou “Acompanhar minha rolagem”. O modo manual encerra após 2 segundos sem avanço, contados a partir do primeiro avanço; o intervalo é ajustável entre 1 e 30 segundos. É possível finalizar ou cancelar. A prévia permite salvar PNG ou PDF apenas no disco, sem upload. O automático restaura a posição inicial; o manual conserva a posição escolhida. A captura não envia mensagens nem altera leituras.
+
+A cópia visual congelada inclui apenas o histórico da conversa ativa, a partir do primeiro pixel na posição escolhida. As posições, estilos e anexos disponíveis são copiados dos componentes reais para um renderizador Electron isolado, sem foco, rede ou acesso ao Node. Assim não é preciso movimentar a conversa para gerar a imagem. Mensagens recebidas durante a captura reaparecem normalmente ao finalizar. A lista atual não é virtualizada; uma futura lista virtualizada precisará adaptar a construção da cópia para renderizar os itens ausentes.
+
+**Limites reais:** PNGs são divididos em faixas consecutivas de até 6.000 pixels de altura ou 24 milhões de pixels por parte, com arredondamento consistente conforme a escala. O limite total é 120 milhões de pixels, 64 MB para a cópia visual e 500.000 pixels de altura em coordenadas CSS; acima disso, capture um intervalo menor. Partes múltiplas são salvas com numeração sequencial numa pasta escolhida, sem substituir arquivos com o mesmo nome. O PDF ajusta cada parte a uma página A4. Fontes e mídias aguardam estabilização por até 20 segundos; se uma mídia continuar indisponível, há aviso e a imagem mostra o conteúdo disponível. Áudios/vídeos são representados pelo player e pelo quadro disponível, não como mídia reproduzível no PNG. Ao mudar o tamanho da janela na captura manual, a captura termina na largura inicial e informa o ocorrido. Em falha depois de partes válidas, a prévia permite salvar essas partes e indica que o resultado está incompleto.
+
+**Validação:** testes de interface em navegador oculto cobrem os dois modos, início no meio do histórico, pausa manual, cancelamento, mensagens chegando durante a captura, texto em edição, temas, grupos e funções anteriores. Teste real com Electron verifica faixas PNG consecutivas e seus pixels nas escalas 100%, 125% e 200%, cortes no início/fim, PDF, cancelamento e conteúdo real da interface com dados fictícios. Nenhuma mensagem ou alteração de grupo real foi enviada nos testes. Testes Python usam bancos temporários. Não foi declarado teste de histórico virtualizado nem de mídias indisponíveis em rede real.

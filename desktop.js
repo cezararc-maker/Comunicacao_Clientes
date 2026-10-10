@@ -15,6 +15,7 @@ const {TEST_GROUP,findTestGroup,registerGroupHandlers}=require('./group_support'
 const {createHistoryStore}=require('./history_store');
 const {orderedMessages,mediaLabel}=require('./media_messages');
 const {registerMediaHandlers}=require('./media_ipc');
+const {registerCaptureHandlers}=require('./capture_conversation');
 let window, pythonProcess, client;
 let restarting=false, initializing=false,syncJob=null;
 const allowedChatIds=new Set(PHONES.map(p=>p+'@c.us'));
@@ -182,6 +183,7 @@ app.whenReady().then(async()=>{
  window.on('maximize',()=>update({windowMaximized:true}));window.on('unmaximize',()=>update({windowMaximized:false}));
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
+ registerCaptureHandlers({ipcMain,BrowserWindow,dialog,getWindow:()=>window,safeSender});
  try{await awaitServer();for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();startWhatsapp();}
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });

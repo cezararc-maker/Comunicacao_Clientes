@@ -1,11 +1,12 @@
 {
   "name": "comunicacao-clientes",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "private": true,
   "description": "Desktop WhatsApp multiatendente - protótipo local",
   "main": "desktop.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test:capture": "electron tests/test_capture_electron.cjs"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

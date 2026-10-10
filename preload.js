@@ -1,6 +1,10 @@
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('desktopApi',{
+ captureBegin:info=>ipcRenderer.invoke('capture-begin',info),
+ capturePart:info=>ipcRenderer.invoke('capture-part',info),
+ captureSave:info=>ipcRenderer.invoke('capture-save',info),
+ captureCancel:info=>ipcRenderer.invoke('capture-cancel',info),
  savePhoneContact:info=>ipcRenderer.invoke('wa-save-contact',info),
  windowAction:action=>ipcRenderer.invoke('window-action',action),
  markRead:chatId=>ipcRenderer.invoke('wa-mark-read',chatId),
