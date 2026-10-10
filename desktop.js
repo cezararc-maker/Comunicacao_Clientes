@@ -47,30 +47,36 @@ function storeMessage(msg){
 }
 async function syncContactsAndChats(){
  update({sync:'sincronizando',error:null});
+ const errors=[];
+ let contacts=[];
+ try{contacts=await client.getContacts();update({contactsCount:contacts.length,sync:'importando contatos'});}
+ catch(e){errors.push('Contatos: '+e.message);}
  try{
-  const contacts=await client.getContacts();
-  update({contactsCount:contacts.length,sync:'contatos recebidos; importando'});
-  const sanitized=contacts.filter(c=>!c.isGroup&&!c.isMe&&c.id && c.id.server==='c.us' && /^\d{10,15}$/.test(c.id.user))
-    .map(c=>({telefone:c.id.user,nome:String(c.name||c.pushname||c.shortName||'').trim()}));
+  const sanitized=contacts.filter(c=>!c.isGroup&&!c.isMe&&c.id&&c.id.server==='c.us'&&/^\d{10,15}$/.test(c.id.user))
+   .map(c=>({telefone:c.id.user,nome:String(c.name||c.pushname||c.shortName||'').trim()}));
   const unique=[...new Map(sanitized.map(c=>[c.telefone,c])).values()];
-  const response=await fetch('http://127.0.0.1:8765/api/whatsapp/sync',{
+  if(unique.length){
+   const response=await fetch('http://127.0.0.1:8765/api/whatsapp/sync',{
     method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},
     body:JSON.stringify({contatos:unique})
-  });
-  if(!response.ok)throw new Error('A sincronização com o cadastro local falhou: HTTP '+response.status);
-  const result=await response.json();
-  update({contactsCount:unique.length,sync:'concluida',syncResult:result});
+   });
+   if(!response.ok)throw Error('Servidor local retornou HTTP '+response.status);
+   const result=await response.json();
+   update({contactsCount:unique.length,syncResult:result});
+  }
+ }catch(e){errors.push('Importação: '+e.message);}
+ try{
   const chats=await client.getChats();
   for(const c of chats.slice(0,400)){
-   const chatId=c.id?._serialized;
-   if(!chatId)continue;
-   const existing=conversations.get(chatId)||{id:chatId,messages:[],timestamp:0};
-   const next={...existing,id:chatId,name:c.name||existing.name||c.id.user,isGroup:!!c.isGroup,timestamp:c.timestamp||existing.timestamp||0};
-   conversations.set(chatId,next);
+   const id=c.id?._serialized;
+   if(!id)continue;
+   const old=conversations.get(id)||{id,messages:[],timestamp:0};
+   conversations.set(id,{...old,id,name:c.name||old.name||c.id.user,isGroup:!!c.isGroup,timestamp:c.timestamp||old.timestamp||0});
   }
   update({});
-  hydratePhotos(chats.slice(0,100).map(c=>({id:c.id?._serialized})).filter(c=>c.id)).catch(console.error);
- }catch(e){update({sync:'erro',error:'Sincronização: '+e.message});}
+  hydratePhotos(chats.slice(0,100).map(c=>({id:c.id?._serialized})).filter(c=>c.id)).catch(e=>console.error('Fotos:',e.message));
+ }catch(e){errors.push('Conversas: '+e.message);}
+ update({sync:errors.length?'parcial':'concluida',error:errors.length?'Sincronização parcial: '+errors.join(' | '):null});
 }
 async function resetClient(){
  if(initializing||restarting)return;
