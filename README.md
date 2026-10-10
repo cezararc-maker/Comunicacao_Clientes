@@ -137,3 +137,8 @@ O protocolo para os próximos passos está em [docs/PROTOCOLO_CONEXOES_DEPARTAME
 
 
 Clique na notificação de uma nova mensagem para abrir sua conversa e centralizar a mensagem com destaque temporário. Funciona nos balões internos e nos balões de desktop; a janela só ganha foco após o clique. O X continua fechando a notificação. Mensagens removidas não são recuperadas automaticamente.
+
+
+## v0.15.0 — ícones das ações
+
+Pacote de 60 SVGs integrado às ações sem ícones por um registro central com nomes semânticos. Ícones herdam a cor do tema; rótulos, atalhos e confirmações permanecem. Salvar vínculo teve apenas o enquadramento corrigido, com autorização do usuário. Clipe, mensagens, contatos e ícones previamente escolhidos da navegação foram preservados. A opção Conexão e configurações continua removida do menu da conversa. Nenhuma regra de sincronização ou dado foi alterado.
