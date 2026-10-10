@@ -10,6 +10,8 @@ const {usableName,buildDirectory,conversationName}=require('./contact_names');
 const {PHONES,SINCE,phoneInScope,messageInScope}=require('./sync_scope');
 const {resolvePhoto}=require('./profile_photos');
 const {getScopedChat}=require('./whatsapp_compat');
+const {orderedMessages,mediaLabel}=require('./media_messages');
+const {registerMediaHandlers}=require('./media_ipc');
 let window, pythonProcess, client;
 let restarting=false, initializing=false,syncJob=null;
 const allowedChatIds=new Set(PHONES.map(p=>p+'@c.us'));
@@ -17,6 +19,7 @@ let photoDiagnostics={};
 const syncToken=crypto.randomBytes(32).toString('hex');
 let state = { status:'desconectado', qr:null, error:null, conversations:[], contactsCount:0, sync:'aguardando',syncProgress:{running:false,completed:0,total:9,percent:0,label:'Aguardando conexão'},testScope:{phones:PHONES,since:SINCE},photos:{} };
 const conversations = new Map();
+const mediaMessages=new Map();
 let contactDirectory=new Map(),localNames=new Map();
 const profileCache=new Map(),profileRequests=new Map();
 async function profilePhoto(id){
@@ -57,13 +60,17 @@ async function awaitServer(){
 }
 function storeMessage(msg){
  if(!messageInScope(msg,allowedChatIds))return;
- const id=msg.fromMe?msg.to:msg.from;
+ let id=msg.fromMe?msg.to:msg.from;
  if(!id || id==='status@broadcast')return;
  const details=contactDirectory.get(id)||{};
+ const existing=[...conversations.values()].find(c=>details.phone&&c.phone===details.phone);if(existing)id=existing.id;
  const chat=conversations.get(id)||{id,name:conversationName({id:{_serialized:id,user:id.split('@')[0]},isGroup:id.endsWith('@g.us'),name:msg._data?.notifyName},details,localNames.get(details.phone)),messages:[],timestamp:0};
- const entry={id:msg.id?._serialized||String(Date.now()),body:msg.body|| (msg.hasMedia?'[Mídia]':''),fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp)};
- if(!chat.messages.some(m=>m.id===entry.id))chat.messages.push(entry);
- chat.messages=chat.messages.slice(-100);
+ const entry={id:msg.id?._serialized||String(Date.now()),body:msg.body||'',fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp),type:msg.type||'chat',hasMedia:!!msg.hasMedia,mediaLabel:msg.hasMedia?mediaLabel(msg.type):''};
+ const previous=chat.messages.findIndex(m=>m.id===entry.id);if(previous<0)chat.messages.push(entry);else chat.messages[previous]={...chat.messages[previous],...entry};
+ chat.messages=orderedMessages(chat.messages).slice(-100);
+ if(msg.hasMedia)mediaMessages.set(entry.id,msg);
+ const retained=new Set([...conversations.values()].flatMap(c=>c.messages.map(m=>m.id)).concat(chat.messages.map(m=>m.id)));
+ for(const key of mediaMessages.keys())if(!retained.has(key))mediaMessages.delete(key);
  chat.timestamp=Math.max(chat.timestamp,entry.timestamp);conversations.set(id,chat);update({});
  if(chat.photo===undefined&&!state.syncProgress?.running)profilePhoto(id).then(photo=>{chat.photo=photo;update({});}).catch(()=>{});
  if(!contactDirectory.has(id)&&!id.endsWith('@g.us')&&typeof client?.getContactById==='function'){
@@ -165,6 +172,7 @@ app.whenReady().then(async()=>{
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });
 ipcMain.handle('wa-state',e=>safeSender(e)?state:null);
+registerMediaHandlers({ipcMain,dialog,getWindow:()=>window,safeSender,getClient:()=>client,getState:()=>state,getMessage:id=>mediaMessages.get(id),storeMessage});
 ipcMain.handle('wa-reconnect',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(syncJob)return {ok:false,message:'Aguarde a sincronização terminar antes de reconectar.'};await resetClient();return {ok:true}});
 ipcMain.handle('wa-sync',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(state.status!=='conectado')return {ok:false,message:'Aguarde o WhatsApp conectar. Se houver QR Code, escaneie-o primeiro.'};return await syncContactsAndChats();});
 ipcMain.handle('wa-send',async(e,info)=>{

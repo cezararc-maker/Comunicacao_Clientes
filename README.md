@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.5.3 — aplicativo desktop (teste)
+# Comunicação Clientes v0.6.0 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -20,6 +20,10 @@ A primeira execução instala dependências. Clique em **WhatsApp / QR Code** pa
 - Sincronizar corrige somente cadastros cujo nome ainda é um número. Nomes personalizados, IDs e vínculos existentes permanecem preservados.
 - Fotos de perfil originais na lista de conversas, cabeçalho e cadastro de contatos. As imagens dos contatos são carregadas conforme entram na tela; fotos indisponíveis usam iniciais. Atualizar fotos limpa o cache. Acesso depende da disponibilidade e privacidade no WhatsApp.
 - Ícones fornecidos pelo usuário adaptados à paleta verde na interface e tela inicial inspirada nos prints de referência.
+- Fotos e figurinhas recebidas podem ser carregadas na própria conversa; clique na foto para ampliar. Áudios recebidos, inclusive mensagens de voz, têm controles de reprodução. Os anexos são baixados apenas quando solicitados, com indicação de falha e opção de tentar novamente.
+- Envio de fotos com legenda, arquivos de áudio e figurinhas WebP, PNG ou JPG com prévia antes de enviar. Fotos/áudios: até 16 MB; figurinhas selecionadas: até 1 MB. Imagens PNG/JPG são convertidas pela biblioteca para figurinha. Emojis podem ser inseridos pelo seletor ou teclado.
+- Gravação pelo microfone, até 2 minutos e 8 MB, com opção de ouvir, descartar ou enviar como mensagem de voz. O microfone só é solicitado ao clicar em Gravar áudio; se o sistema negar acesso, é possível selecionar um arquivo de áudio.
+- Esc encerra a visualização da conversa e volta à tela inicial, descartando prévias e gravações ainda não enviadas. Mensagens ficam em ordem cronológica, com as recentes embaixo; a leitura anterior é preservada quando chegam mensagens novas e há um botão para ir às mais recentes. Atualizações de estado não recriam o player de áudio em reprodução.
 - QR Code de sessão única via whatsapp-web.js, indicação de estado, listagem inicial de conversas e mensagens novas, envio de texto e resposta citando com duplo clique.
 
 ## Escopo temporário de teste
@@ -36,12 +40,14 @@ Na v0.5.3, a consulta usa o objeto interno de conversa como alternativa à seria
 
 ## Não implementado
 
-Servidor multiusuário em LAN, login por funcionário, fila de atendimento, gravação de voz, chamadas, sincronização histórica completa, instalador EXE. **Não use em produção**. A integração QR e o envio real de documentos precisam ser validados em um computador Windows conectado ao WhatsApp.
+Servidor multiusuário em LAN, login por funcionário, fila de atendimento, chamadas, sincronização histórica completa, instalador EXE. **Não use em produção**. A integração QR e o envio real de documentos precisam ser validados em um computador Windows conectado ao WhatsApp.
 
 ## Testes em segundo plano
 
-Após instalar requirements.txt, execute `python -m unittest discover -s tests -v`, `node tests/test_contact_names.cjs`, `node tests/test_documents.cjs`, `node tests/test_sync_scope.cjs` e `node tests/test_profile_photos.cjs`. Os testes usam banco temporário e simulam a conexão WhatsApp; não acessam a sessão real nem os dados de produção.
+Após instalar requirements.txt, execute `python -m unittest discover -s tests -v`, `node tests/test_contact_names.cjs`, `node tests/test_documents.cjs`, `node tests/test_sync_scope.cjs`, `node tests/test_profile_photos.cjs` e `node tests/test_media.cjs`. Os testes usam banco temporário e simulam a conexão WhatsApp; não acessam a sessão real nem os dados de produção.
 
 ## Segurança
 
 Flask restringe a interface a `127.0.0.1` neste protótipo. A base contém dados reais se importados; faça backup de `dados/comunicacao.db`. A integração não oficial pode apresentar riscos. Para uso empresarial, avaliar a API oficial.
+
+Na v0.6.0, os testes de interface em navegador isolado verificaram prévias, envio simulado dos quatro tipos de mídia, emojis, ordem cronológica, player preservado, Esc e gravação com microfone sintético. Nenhuma mensagem foi enviada a contatos reais durante esses testes. O envio e recebimento completos precisam ser conferidos na sessão WhatsApp após atualizar o aplicativo.

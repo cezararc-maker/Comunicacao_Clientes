@@ -1,0 +1,103 @@
+'use strict';
+let mediaDraft=null,mediaSending=false,voiceRecorder=null,voiceStream=null,voiceChunks=[],voiceTimer=null,voiceStarted=0,voiceChat=null,voiceCanceled=false,voiceGeneration=0,voicePending=false;
+const mediaViews=new Map();let mediaViewBytes=0;
+const emojis=['😀','😊','😂','😍','🥰','😎','🤔','😢','🙏','👍','👎','👏','💪','👌','✅','❌','❤️','💚','🎉','🎂','☕','📎','📄','📅','📞','💬','👋','🤝','🙌','✨','😊','😉'];
+function toggleEmojis(){const panel=$('emoji-panel');panel.classList.toggle('hidden');if(!panel.dataset.ready){panel.replaceChildren(...emojis.map(emoji=>{const b=document.createElement('button');b.type='button';b.textContent=emoji;b.setAttribute('aria-label','Inserir '+emoji);b.onclick=()=>{const input=$('wamessage'),start=input.selectionStart,end=input.selectionEnd;input.setRangeText(emoji,start,end,'end');input.focus();};return b}));panel.dataset.ready='1';}}
+function cachedMedia(id,media){
+ const uri='data:'+media.mimetype+';base64,'+media.data;
+ if(mediaViews.has(id)){mediaViewBytes-=mediaViews.get(id).length;mediaViews.delete(id);}
+ while(mediaViewBytes+uri.length>40*1024*1024&&mediaViews.size){const key=mediaViews.keys().next().value;mediaViewBytes-=mediaViews.get(key).length;mediaViews.delete(key);}
+ mediaViews.set(id,uri);mediaViewBytes+=uri.length;return uri;
+}
+function showMedia(node,message,uri){
+ const box=node.querySelector('.message-attachment');if(!box||!node.isConnected)return;
+ const oldHeight=$('wamessages').scrollHeight,wasBottom=$('wamessages').scrollHeight-$('wamessages').scrollTop-$('wamessages').clientHeight<90;
+ box.replaceChildren();
+ if(['audio','ptt'].includes(message.type)){const audio=document.createElement('audio');audio.controls=true;audio.preload='metadata';audio.src=uri;audio.setAttribute('aria-label',message.mediaLabel||'Áudio');box.append(audio);}
+ else {const img=document.createElement('img');img.src=uri;img.alt=message.type==='sticker'?'Figurinha recebida':'Foto na conversa';img.className=message.type==='sticker'?'message-sticker':'message-photo';img.onload=()=>{if((wasBottom||$('wamessages').dataset.followBottom==='1')&&$('wamessages').dataset.conversation===waChat)$('wamessages').scrollTop=$('wamessages').scrollHeight;};img.onerror=()=>{box.textContent='Não foi possível exibir esta imagem.';};img.onclick=()=>{if(message.type==='sticker')return;$('photo-full').src=uri;$('photo-dialog').showModal();};box.append(img);}
+ if(wasBottom&&$('wamessages').scrollHeight!==oldHeight)$('wamessages').scrollTop=$('wamessages').scrollHeight;
+}
+async function loadMessageMedia(node,message,chatId){
+ const button=node.querySelector('.load-media');if(!button||button.disabled)return;button.disabled=true;button.textContent='Carregando…';
+ try{const media=await window.desktopApi.messageMedia({chatId,messageId:message.id});
+  if(!/^(image\/(png|jpeg|webp|gif)|audio\/(ogg|mpeg|mp4|wav|x-wav|webm|aac|opus))$/.test(media.mimetype)||!media.data)throw Error('Formato não suportado.');
+  showMedia(node,message,cachedMedia(message.id,media));
+ }catch(error){button.disabled=false;button.textContent='Tentar carregar novamente';button.title=error.message;const status=node.querySelector('.media-error');status.textContent=error.message;}
+}
+function renderMessages(chat){
+ if(waState.status!=='conectado'&&(voiceStream||voicePending))stopVoice(true);
+ const area=$('wamessages'),changed=area.dataset.conversation!==(chat?.id||'');
+ const atBottom=area.scrollHeight-area.scrollTop-area.clientHeight<90;
+ if(!chat){if(area.dataset.conversation!==''){area.innerHTML=welcomeHtml();area.dataset.conversation='';}return;}
+ if(changed){area.replaceChildren();area.dataset.conversation=chat.id;}
+ if(changed||atBottom)area.dataset.followBottom='1';
+ const messages=[...(chat.messages||[])].sort((a,b)=>(Number(a.timestamp)||0)-(Number(b.timestamp)||0));
+ const keep=new Set(messages.map(m=>String(m.id)));for(const node of [...area.children])if(!keep.has(node.dataset.id))node.remove();
+ const existing=new Map([...area.children].map(node=>[node.dataset.id,node]));
+ let added=false;
+ messages.forEach((m,index)=>{
+  let node=existing.get(String(m.id));const signature=JSON.stringify([m.body,m.type,m.hasMedia,m.fromMe,m.timestamp]);
+  if(!node){node=document.createElement('div');node.dataset.id=String(m.id);added=true;}
+  node.dataset.msg=String(index);
+  if(node.dataset.signature!==signature){
+   node.dataset.signature=signature;node.className='item'+(m.fromMe?' outgoing':'')+(m.type==='sticker'?' sticker-message':'');node.replaceChildren();
+   if(m.hasMedia){const box=document.createElement('div');box.className='message-attachment';
+    if(['image','sticker','audio','ptt'].includes(m.type)){const b=document.createElement('button');b.className='load-media secondary';b.textContent='Carregar '+(m.mediaLabel||'anexo').toLocaleLowerCase('pt-BR');b.onclick=()=>loadMessageMedia(node,m,chat.id);box.append(b);const error=document.createElement('small');error.className='media-error';box.append(error);}
+    else box.textContent=m.mediaLabel||'Anexo';node.append(box);
+   }
+   if(m.body){const body=document.createElement('div');body.className='message-body';body.textContent=m.body;node.append(body);}
+   const time=document.createElement('small');time.className='message-time';time.textContent=Number.isFinite(m.timestamp)?new Date(m.timestamp*1000).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';node.append(time);
+   node.ondblclick=e=>{if(e.target.closest('button,audio'))return;quoted=m.id;$('wareply').textContent='Respondendo: '+(m.body||m.mediaLabel||'Mensagem').slice(0,100);$('cancelreply').classList.remove('hidden');$('wamessage').focus();};
+  }
+  if(area.children[index]!==node)area.insertBefore(node,area.children[index]||null);
+  const cached=mediaViews.get(m.id);if(cached&&node.querySelector('.load-media'))showMedia(node,m,cached);
+ });
+ if(changed||(added&&atBottom))area.scrollTop=area.scrollHeight;
+ if(atBottom||changed)$('new-messages').classList.add('hidden');else if(added)$('new-messages').classList.remove('hidden');
+ document.querySelectorAll('[data-media-action]').forEach(b=>b.disabled=waState.status!=='conectado'||mediaSending);
+}
+function newestMessages(){const area=$('wamessages');area.dataset.followBottom='1';area.scrollTop=area.scrollHeight;$('new-messages').classList.add('hidden');}
+function releaseDraft(){if(mediaDraft?.preview?.startsWith('blob:'))URL.revokeObjectURL(mediaDraft.preview);mediaDraft=null;$('media-preview').replaceChildren();}
+function closeMedia(){if($('media-dialog').open)$('media-dialog').close();releaseDraft();if(!mediaSending)window.desktopApi?.discardMedia?.().catch(()=>{});}
+function presentMedia(draft){
+ mediaDraft=draft;$('media-title').textContent=({image:'Enviar foto',audio:'Enviar áudio',sticker:'Enviar figurinha',voice:'Enviar mensagem de voz'}[draft.kind]);
+ $('media-recipient').textContent='Para: '+((waState.conversations||[]).find(c=>c.id===draft.chatId)?.name||draft.chatId);
+ $('media-filename').textContent=draft.name||'Gravação de voz';$('media-caption').value='';$('media-caption').classList.toggle('hidden',draft.kind!=='image');
+ const content=document.createElement(['audio','voice'].includes(draft.kind)?'audio':'img');content.src=draft.preview;if(content.tagName==='AUDIO')content.controls=true;else content.alt='Prévia do anexo';$('media-preview').replaceChildren(content);$('media-send').disabled=false;$('media-dialog').showModal();
+}
+async function chooseMedia(kind){
+ if(!window.desktopApi||!waChat){aviso('Escolha uma conversa.');return;}if(mediaSending)return;stopVoice(true);closeMedia();const chatId=waChat;
+ try{const selected=await window.desktopApi.selectMedia({kind});if(!selected.canceled&&waChat===chatId)presentMedia({...selected,chatId,quotedId:quoted});else window.desktopApi.discardMedia().catch(()=>{});}catch(error){aviso(error.message);}
+}
+async function sendPreparedMedia(){
+ if(!mediaDraft||mediaSending)return;const draft=mediaDraft;mediaSending=true;$('media-send').disabled=true;
+ try{await window.desktopApi.sendMedia({chatId:draft.chatId,selectionId:draft.selectionId,kind:draft.kind,media:draft.media,caption:$('media-caption').value,quotedId:draft.quotedId});closeMedia();cancelReply();aviso('Anexo enviado.',true);}
+ catch(error){aviso(error.message);if(mediaDraft)$('media-send').disabled=false;}
+ finally{mediaSending=false;renderWA();}
+}
+function stopVoice(cancel=false){
+ if(cancel)voiceGeneration++;
+ voiceCanceled=cancel;clearInterval(voiceTimer);voiceTimer=null;if(voiceRecorder&&voiceRecorder.state!=='inactive')voiceRecorder.stop();voiceStream?.getTracks().forEach(t=>t.stop());voiceStream=null;$('voice-status').classList.add('hidden');$('record-audio').classList.remove('recording');$('record-audio').textContent='● Gravar áudio';
+}
+async function recordVoice(){
+ if(voiceRecorder?.state==='recording'){stopVoice();return;}if(!waChat||mediaSending||voicePending)return;voicePending=true;voiceChat=waChat;const quotedId=quoted,chatId=waChat,generation=++voiceGeneration;
+ try{
+  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined')throw Error('Gravação indisponível neste computador. Você pode selecionar um arquivo de áudio.');
+  const stream=await navigator.mediaDevices.getUserMedia({audio:true});if(waChat!==chatId||generation!==voiceGeneration){stream.getTracks().forEach(t=>t.stop());return;}voiceStream=stream;
+  const mimetype=['audio/webm;codecs=opus','audio/ogg;codecs=opus','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));if(!mimetype)throw Error('Formato de gravação não suportado.');
+  voiceChunks=[];voiceCanceled=false;voiceRecorder=new MediaRecorder(stream,{mimeType:mimetype});voiceStarted=Date.now();let size=0;
+  voiceRecorder.ondataavailable=e=>{if(generation!==voiceGeneration)return;if(e.data.size){voiceChunks.push(e.data);size+=e.data.size;if(size>8*1024*1024){stopVoice(true);aviso('A gravação ultrapassou 8 MB. Grave um áudio menor.');}}};
+  voiceRecorder.onstop=async()=>{if(generation!==voiceGeneration||voiceCanceled||waChat!==chatId)return;const blob=new Blob(voiceChunks,{type:mimetype});voiceChunks=[];if(!blob.size)return;
+   const reader=new FileReader();reader.onload=()=>{if(waChat===chatId&&generation===voiceGeneration)presentMedia({kind:'voice',chatId,quotedId,name:'Gravação de voz',preview:URL.createObjectURL(blob),media:{mimetype:mimetype.split(';')[0],data:String(reader.result).split(',')[1],filename:mimetype.startsWith('audio/ogg')?'audio.ogg':'audio.webm'}});};reader.readAsDataURL(blob);
+  };
+  voiceRecorder.onerror=()=>{if(generation!==voiceGeneration)return;stopVoice(true);aviso('Não foi possível gravar o áudio.');};voiceRecorder.start(1000);$('voice-time').textContent='0:00';$('voice-status').classList.remove('hidden');$('record-audio').classList.add('recording');$('record-audio').textContent='■ Parar gravação';
+  voiceTimer=setInterval(()=>{const seconds=Math.floor((Date.now()-voiceStarted)/1000);$('voice-time').textContent=Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');if(seconds>=120)stopVoice();},500);
+ }catch(error){stopVoice(true);aviso(error.name==='NotAllowedError'?'O microfone não foi autorizado. Você pode selecionar um arquivo de áudio.':error.message);}finally{voicePending=false;}
+}
+function closeConversation(){stopVoice(true);closeMedia();$('emoji-panel').classList.add('hidden');document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());$('photo-full').removeAttribute('src');waChat=null;quoted=null;$('wamessage').value='';renderWA();}
+document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;if($('view-whatsapp').classList.contains('hidden'))return;event.preventDefault();closeConversation();});
+document.getElementById('media-dialog').addEventListener('cancel',e=>{e.preventDefault();closeConversation();});
+document.getElementById('photo-dialog').addEventListener('cancel',e=>{e.preventDefault();closeConversation();});
+document.getElementById('wamessages').addEventListener('scroll',()=>{const area=$('wamessages');if(area.scrollHeight-area.scrollTop-area.clientHeight<90)$('new-messages').classList.add('hidden');});
+document.getElementById('wamessages').addEventListener('wheel',event=>{if(event.deltaY<0)$('wamessages').dataset.followBottom='0';},{passive:true});
+window.addEventListener('beforeunload',()=>stopVoice(true));
