@@ -34,9 +34,10 @@ async function getScopedChat(client,id){
    if(!chat)return null;
    const messages=chat.msgs?.getModelsArray()||[];
    const newest=messages.reduce((latest,m)=>Math.max(latest,Number(m.t)||0),0);
-   return {id:{_serialized:chat.id._serialized,user:chat.id.user},name:chat.formattedTitle||'',isGroup:false,lastMessage:newest?{timestamp:newest}:null};
+   return {id:{_serialized:chat.id._serialized||String(chat.id),user:chat.id.user},name:chat.formattedTitle||'',isGroup:chat.id.server==='g.us',groupMetadata:chat.groupMetadata?{restrict:chat.groupMetadata.restrict,desc:chat.groupMetadata.desc||'',owner:chat.groupMetadata.owner?.serialize?.()||null,participants:chat.groupMetadata.participants?.serialize?.()||[]}:null,lastMessage:newest?{timestamp:newest}:null};
   },id);
   if(!data)throw originalError;
+  if(data.isGroup){const {GroupChat}=require('whatsapp-web.js');return new GroupChat(client,data);}
   return {...data,fetchMessages:options=>{
    const {Chat}=require('whatsapp-web.js');
    return Chat.prototype.fetchMessages.call({client,id:data.id},options);

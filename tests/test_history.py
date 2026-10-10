@@ -16,12 +16,15 @@ class HistoryTests(unittest.TestCase):
     chat['messages']=[{'id':'second','timestamp':1791522020,'ack':3}]
     self.assertEqual(client.post('/api/whatsapp/historico',headers=headers,json={'conversations':[chat]}).status_code,200)
     self.assertEqual(client.post('/api/whatsapp/historico',headers=headers,json={'conversations':[chat,None]}).status_code,400)
+    group={'id':'12345@g.us','name':'Teste app','isGroup':True,'messages':[{'id':'group-reply','timestamp':1791522030,'reply':{'id':'group-original','body':'Mensagem original','author':'Membro'}}]}
+    self.assertEqual(client.post('/api/whatsapp/historico',headers=headers,json={'conversations':[group]}).status_code,200)
     media={'mimetype':'audio/ogg','data':'YWJj','filename':'teste.ogg'}
     self.assertEqual(client.post('/api/whatsapp/midia/first',headers=headers,json=media).status_code,200)
     server.init_db();client=server.app.test_client()
     rows=client.get('/api/whatsapp/historico',headers=headers).json
-    self.assertEqual([m['id'] for m in rows[0]['messages']],['first','second'])
-    self.assertEqual(rows[0]['messages'][1]['ack'],3)
+    private=next(c for c in rows if c['id']=='123@lid');self.assertEqual([m['id'] for m in private['messages']],['first','second'])
+    self.assertEqual(next(c for c in rows if c.get('isGroup'))['messages'][0]['reply']['body'],'Mensagem original')
+    self.assertEqual(private['messages'][1]['ack'],3)
     self.assertEqual(client.get('/api/whatsapp/midia/first',headers=headers).json,media)
     with server.connect() as db:
      self.assertEqual(db.execute('SELECT funcao FROM vinculos').fetchone()[0],'Financeiro')

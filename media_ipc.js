@@ -34,7 +34,7 @@ function registerMediaHandlers({ipcMain,dialog,getWindow,safeSender,getClient,ge
   const options={sendMediaAsSticker:kind==='sticker',sendAudioAsVoice:kind==='voice',sendMediaAsDocument:kind==='document'};
   if(['image','video','clipboard'].includes(kind)&&caption)options.caption=caption;if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
   const sent=await getClient().sendMessage(chatId,new MessageMedia(media.mimetype,media.data,media.filename||null),options);
-  if(!sent)throw Error('O WhatsApp não confirmou o envio.');storeMessage(sent);
+  if(!sent)throw Error('O WhatsApp não confirmou o envio.');storeMessage(sent,false,info?.quotedId);
   const sentId=serializedId(sent.id);
   // Stickers are converted by WhatsApp; cache their resulting WebP on download.
   if(sentId&&kind!=='sticker')await saveMedia(sentId,{mimetype:media.mimetype,data:media.data,filename:media.filename}).catch(error=>console.error('Cache do anexo enviado:',error.message));

@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('desktopApi',{
  savePhoneContact:info=>ipcRenderer.invoke('wa-save-contact',info),
  windowAction:action=>ipcRenderer.invoke('window-action',action),
  markRead:chatId=>ipcRenderer.invoke('wa-mark-read',chatId),
+ groupInfo:id=>ipcRenderer.invoke('wa-group-info',id),
+ groupChange:info=>ipcRenderer.invoke('wa-group-change',info),
  getState:()=>ipcRenderer.invoke('wa-state'),
  reconnect:()=>ipcRenderer.invoke('wa-reconnect'),
  syncContacts:()=>ipcRenderer.invoke('wa-sync'),

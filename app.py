@@ -379,7 +379,7 @@ def whatsapp_history():
         if not isinstance(chats, list) or len(chats) > 100:
             return jsonify(erro='Histórico inválido'), 400
         for chat in chats:
-            if not isinstance(chat, dict) or not isinstance(chat.get('id'), str) or not re.fullmatch(r'\d+@(?:lid|c\.us)', chat['id']):
+            if not isinstance(chat, dict) or not isinstance(chat.get('id'), str) or not re.fullmatch(r'(?:\d+@(?:lid|c\.us)|\d+(?:-\d+)?@g\.us)', chat['id']):
                 return jsonify(erro='Conversa inválida'), 400
             messages = chat.get('messages', [])
             if not isinstance(messages, list) or any(not isinstance(m, dict) or not isinstance(m.get('id'), str) or not m['id'] or not isinstance(m.get('timestamp'), (int, float)) for m in messages):
