@@ -1,6 +1,9 @@
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('desktopApi',{
+ savePhoneContact:info=>ipcRenderer.invoke('wa-save-contact',info),
+ windowAction:action=>ipcRenderer.invoke('window-action',action),
+ markRead:chatId=>ipcRenderer.invoke('wa-mark-read',chatId),
  getState:()=>ipcRenderer.invoke('wa-state'),
  reconnect:()=>ipcRenderer.invoke('wa-reconnect'),
  syncContacts:()=>ipcRenderer.invoke('wa-sync'),

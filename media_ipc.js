@@ -27,12 +27,12 @@ function registerMediaHandlers({ipcMain,dialog,getWindow,safeSender,getClient,ge
    const stat=fs.statSync(selection.file);if(!stat.isFile()||stat.size>MAX_MEDIA)throw Error('O arquivo mudou. Selecione novamente.');
    kind=selection.kind;media=validateMedia(MessageMedia.fromFilePath(selection.file),kind);
   }else{
-   if(info?.kind!=='voice')throw Error('Selecione um anexo antes de enviar.');
-   kind='voice';media=validateMedia(info.media,'audio');if(media.bytes>8*1024*1024||!/^audio\/(webm|ogg)$/.test(media.mimetype))throw Error('Gravação inválida ou acima de 8 MB.');
+   if(!['voice','clipboard'].includes(info?.kind))throw Error('Selecione um anexo antes de enviar.');
+   kind=info.kind;media=validateMedia(info.media,kind==='voice'?'audio':'image');if(kind==='voice'&&(media.bytes>8*1024*1024||!/^audio\/(webm|ogg)$/.test(media.mimetype)))throw Error('Gravação inválida ou acima de 8 MB.');
   }
   const caption=String(info?.caption||'').trim();if(caption.length>10000)throw Error('Legenda muito longa.');
   const options={sendMediaAsSticker:kind==='sticker',sendAudioAsVoice:kind==='voice',sendMediaAsDocument:kind==='document'};
-  if(['image','video'].includes(kind)&&caption)options.caption=caption;if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
+  if(['image','video','clipboard'].includes(kind)&&caption)options.caption=caption;if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
   const sent=await getClient().sendMessage(chatId,new MessageMedia(media.mimetype,media.data,media.filename||null),options);
   if(!sent)throw Error('O WhatsApp não confirmou o envio.');storeMessage(sent);
   const sentId=serializedId(sent.id);

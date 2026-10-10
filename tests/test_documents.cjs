@@ -25,5 +25,9 @@ const event={sender:{id:1,getURL:()=>'http://127.0.0.1:8765/'}},targets=['556798
  const photo=await handlers['wa-contact-photos'](event,['5567996373431']);assert.equal(photo['5567996373431'],'https://example.com/5567996373431@c.us.jpg');
  await assert.rejects(handlers['wa-contact-photos'](event,['invalid']),/inválida/);
  vm.runInContext("state.status='desconectado'",sandbox);const offline=await handlers['wa-select-documents'](event);await assert.rejects(handlers['wa-send-documents'](event,{selectionId:offline.selectionId,chatIds:targets}),/Conecte/);
+ vm.runInContext("state.status='conectado';globalThis.phoneSaves=[];client.saveOrEditAddressbookContact=async(...args)=>phoneSaves.push(args);window.close=()=>globalThis.windowResult='close';window.minimize=()=>globalThis.windowResult='minimize';window.isMaximized=()=>false;window.maximize=()=>globalThis.windowResult='maximize'",sandbox);
+ await handlers['wa-save-contact'](event,{phone:'5567996373431',name:'Contato de teste'});assert.equal(vm.runInContext('phoneSaves[0][3]',sandbox),true);assert.equal(vm.runInContext('phoneSaves[0][0]',sandbox),'5567996373431');await assert.rejects(handlers['wa-save-contact'](event,{phone:'bad',name:'Teste'}),/inválido/);
+ for(const action of ['close','minimize','maximize']){await handlers['window-action'](event,action);assert.equal(vm.runInContext('windowResult',sandbox),action);}
+ vm.runInContext("conversations.set('111@lid',{id:'111@lid',unreadCount:4,messages:[],timestamp:0})",sandbox);await handlers['wa-mark-read'](event,'111@lid');assert.equal(vm.runInContext("conversations.get('111@lid').unreadCount",sandbox),0);
  console.log('Documents/photos: file-first selection, recipient validation, multiple targets, cancellation, limits, expired token, partial failure, original photo URLs and sender checks passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});

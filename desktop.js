@@ -22,7 +22,7 @@ let state = { status:'desconectado', qr:null, error:null, conversations:[], cont
 const conversations = new Map();
 const mediaMessages=new Map();
 let historyReady=false,photoTimer=null,photoRefreshing=false;
-const acknowledgments=new Map();
+let readActiveChatId=null;const acknowledgments=new Map();
 const history=createHistoryStore({token:syncToken,onError:error=>update({error:error.message})});
 let contactDirectory=new Map(),localNames=new Map();
 const profileCache=new Map(),profileRequests=new Map();
@@ -62,7 +62,7 @@ async function awaitServer(){
  }
  throw new Error('Servidor de cadastros não iniciou. Verifique Python e as dependências.');
 }
-function storeMessage(msg){
+function storeMessage(msg,historical=false){
  normalizeMessage(msg);
  if(!messageInScope(msg,allowedChatIds))return;
  let id=msg.fromMe?msg.to:msg.from;
@@ -71,8 +71,8 @@ function storeMessage(msg){
  const existing=[...conversations.values()].find(c=>details.phone&&c.phone===details.phone);if(existing)id=existing.id;
  const chat=conversations.get(id)||{id,name:conversationName({id:{_serialized:id,user:id.split('@')[0]},isGroup:id.endsWith('@g.us'),name:msg._data?.notifyName},details,localNames.get(details.phone)),messages:[],timestamp:0};
  const messageId=serializedId(msg.id);if(!messageId)return;
- const entry={id:messageId,body:msg.body||'',fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp),type:msg.type||'chat',hasMedia:!!msg.hasMedia,mediaLabel:msg.hasMedia?mediaLabel(msg.type):'',ack:acknowledgments.get(messageId)??Number(msg.ack??0)};
- const previous=chat.messages.findIndex(m=>m.id===entry.id);if(previous<0)chat.messages.push(entry);else chat.messages[previous]={...chat.messages[previous],...entry};
+ const entry={id:messageId,body:msg.body||'',fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp),type:msg.type||'chat',hasMedia:!!msg.hasMedia,mediaLabel:msg.hasMedia?mediaLabel(msg.type):'',filename:msg._data?.filename||'',ack:acknowledgments.get(messageId)??Number(msg.ack??0)};
+ const previous=chat.messages.findIndex(m=>m.id===entry.id);if(previous<0){chat.messages.push(entry);if(!historical&&!entry.fromMe&&!(id===readActiveChatId&&window?.isFocused?.()))chat.unreadCount=(chat.unreadCount||0)+1;}else chat.messages[previous]={...chat.messages[previous],...entry};
  chat.messages=orderedMessages(chat.messages);
  if(msg.hasMedia)mediaMessages.set(entry.id,msg);
  const retained=new Set([...conversations.values()].flatMap(c=>c.messages.map(m=>m.id)).concat(chat.messages.map(m=>m.id)));
@@ -128,7 +128,7 @@ async function performScopedSync(){
     const id=chat.id._serialized,details=contactDirectory.get(id)||{};
     const old=conversations.get(id)||{messages:[],timestamp:0};
     conversations.set(id,{...old,id,name:conversationName(chat,details,localNames.get(details.phone),old.name),phone:details.phone,isGroup:false,messages:old.messages.filter(m=>m.timestamp>=SINCE),timestamp:old.timestamp});
-    try{if(!chat.lastMessage||Number(chat.lastMessage.timestamp)>=SINCE){const messages=await chat.fetchMessages({limit:100});for(const msg of messages)storeMessage(msg);}}
+    try{if(!chat.lastMessage||Number(chat.lastMessage.timestamp)>=SINCE){const messages=await chat.fetchMessages({limit:100});for(const msg of messages)storeMessage(msg,true);}}
     catch(error){errors.push('Mensagens '+(details.phone||id));console.error('Mensagens de teste:',error.message);}
    }
    step('Mensagens recentes: '+(i+1)+' de '+PHONES.length+' contatos');
@@ -171,8 +171,10 @@ async function startWhatsapp(){
 }
 app.whenReady().then(async()=>{
  startPython();
- window=new BrowserWindow({width:1320,height:830,minWidth:930,minHeight:600,show:false,autoHideMenuBar:true,
+ window=new BrowserWindow({width:1320,height:830,minWidth:930,minHeight:600,show:false,frame:false,roundedCorners:true,backgroundColor:'#F4F7FA',autoHideMenuBar:true,
   webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:false,preload:path.join(__dirname,'preload.js')}});
+ window.on('focus',()=>{const chat=conversations.get(readActiveChatId);if(chat&&chat.unreadCount){chat.unreadCount=0;update({});}});
+ window.on('maximize',()=>update({windowMaximized:true}));window.on('unmaximize',()=>update({windowMaximized:false}));
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
  try{await awaitServer();for(const chat of await history.load()){if(!phoneInScope(chat.phone))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();startWhatsapp();}
@@ -260,3 +262,7 @@ async function refreshProfilePhotos(){
  if(state.status!=='conectado'||state.syncProgress?.running||photoRefreshing)return;photoRefreshing=true;
  try{for(const phone of PHONES){profileCache.delete(phone);const alias=[...contactDirectory].find(([id,c])=>c.phone===phone&&id.endsWith('@lid'))?.[0]||phone+'@c.us';const photo=await profilePhoto(alias);for(const chat of conversations.values())if(chat.phone===phone&&photo)chat.photo=photo;}update({photoRefreshAt:Date.now()});}catch(error){console.error('Atualização automática de fotos:',error.message);}finally{photoRefreshing=false;}
 }
+
+ipcMain.handle('wa-mark-read',(e,id)=>{if(!safeSender(e))throw Error('Janela não autorizada');readActiveChatId=id?String(id):null;const chat=conversations.get(String(id));if(chat){chat.unreadCount=0;update({});}return true;});
+ipcMain.handle('wa-save-contact',async(e,info)=>{if(!safeSender(e))throw Error('Janela não autorizada');if(state.status!=='conectado')throw Error('O contato foi salvo no aplicativo. Conecte o WhatsApp para sincronizá-lo com o celular.');const phone=String(info?.phone||'').replace(/\D/g,''),name=String(info?.name||'').trim();if(!/^\d{10,15}$/.test(phone)||!name||name.length>200)throw Error('Contato inválido');await client.saveOrEditAddressbookContact(phone,name,'',true);return {ok:true};});
+ipcMain.handle('window-action',(e,action)=>{if(!safeSender(e))throw Error('Janela não autorizada');if(action==='close')window.close();else if(action==='minimize')window.minimize();else if(action==='maximize'){if(window.isMaximized())window.unmaximize();else window.maximize();}return true;});

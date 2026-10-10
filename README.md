@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.6.1 — aplicativo desktop (teste)
+# Comunicação Clientes v0.7.0 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -56,3 +56,10 @@ Na v0.6.0, os testes de interface em navegador isolado verificaram prévias, env
 Na v0.6.1, conversas e anexos baixados são preservados no banco local `dados/comunicacao.db` e reaparecem ao abrir o aplicativo, antes da conexão WhatsApp. Atualizações não exigem apagar dados ou refazer a sincronização do histórico. A sessão QR continua em `%APPDATA%/comunicacao-clientes/wa-session`. Faça backup dessas duas pastas com o aplicativo fechado; não apague nem substitua o banco para atualizar. O corte de teste continua em 09/10/2026 às 01h (Cuiabá), com somente os dois contatos definidos.
 
 Foram corrigidos os identificadores e o tipo de arquivo usados para baixar mídias nas versões recentes do WhatsApp Web. O compositor possui clipe para fotos, vídeos, áudios e documentos/ZIP, e um adesivo para emojis e figurinhas; gravação permanece à direita. Os vínculos empresariais aparecem na lista de conversas. Mensagens enviadas mostram relógio, visto de envio, entrega e leitura; erros aparecem temporariamente. Fotos são verificadas automaticamente a cada minuto enquanto conectado, respeitando a disponibilidade e privacidade do WhatsApp.
+
+
+Na v0.7.0, mídias são baixadas automaticamente ao abrir a conversa (duas por vez, cache local e tentativas automáticas limitadas). Imagens coladas com Ctrl+V abrem prévia antes do envio. Fotos e PDFs possuem visualizador que fecha clicando fora. Os áudios recentes observados na sessão de teste tinham confirmação de entrega; agora o player aparece automaticamente.
+
+Os cartões são compactos e arredondados, com empresa/cargo em uma faixa cinza única e contador local de mensagens não lidas. Abrir a conversa limpa o contador. Nos cadastros, o menu ⋮ permite editar contatos/empresas e excluir contatos com confirmação. Excluir contato mantém conversas e mídias; impede que a sincronização automática recrie seu cadastro. Ao criar contato, a caixa opcional solicita sua inclusão na agenda do celular pela API do WhatsApp: requer conexão e suporte da conta; falhas mantêm o cadastro local e são informadas.
+
+Em Configurações → Aparência estão os temas Branco e Azul (padrão), Verde, Violeta, Laranja e Grafite. A preferência é local e muda imediatamente sem descartar formulários. A barra personalizada possui controles fechar/minimizar/maximizar e área de arraste, com cantos internos ajustados ao maximizar. O arredondamento externo e encaixe dependem dos recursos do Windows; não há menu de encaixe nativo ao pairar sobre o controle personalizado. A aparência foi conferida em navegador isolado a 1600×900 e tamanho mínimo. Os comandos de janela foram verificados com chamadas simuladas; arraste/redimensionamento no Windows precisam ser conferidos após iniciar a versão atualizada.

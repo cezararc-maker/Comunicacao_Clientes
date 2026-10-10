@@ -50,6 +50,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS wa_conversas (id TEXT PRIMARY KEY, dados TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS wa_mensagens (id TEXT PRIMARY KEY, conversa_id TEXT NOT NULL, timestamp REAL NOT NULL, dados TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS wa_mensagens_conversa ON wa_mensagens(conversa_id,timestamp);
+        CREATE TABLE IF NOT EXISTS contatos_excluidos (telefone TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS wa_midias (mensagem_id TEXT PRIMARY KEY, dados TEXT NOT NULL);
         """)
 
@@ -148,6 +149,7 @@ def criar_contato():
             if any(r['status'] == 'existente' for r in inspect_contacts(db, [{'nome': nome, 'telefone': '+' + telefone}])):
                 return jsonify(erro="Telefone já cadastrado. Vincule a empresa ao contato existente."), 409
             db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (nome,'+' + telefone))
+            db.execute('DELETE FROM contatos_excluidos WHERE telefone=?', (telefone,))
         return jsonify(ok=True), 201
     except sqlite3.IntegrityError:
         return jsonify(erro="Telefone já cadastrado. Vincule a empresa ao contato existente."), 409
@@ -306,6 +308,8 @@ def sync_whatsapp_contacts():
                 phone = phone_key('+' + digits(item.get("telefone")))
             except ValueError:
                 continue
+            if db.execute('SELECT telefone FROM contatos_excluidos WHERE telefone=?', (phone,)).fetchone():
+                continue
             name = str(item.get("nome", "")).strip()[:200]
             if not 10 <= len(phone) <= 15:
                 continue
@@ -408,6 +412,45 @@ def whatsapp_media_cache(message_id):
             return jsonify(erro='Mídia inválida'), 400
         db.execute('INSERT INTO wa_midias(mensagem_id,dados) VALUES (?,?) ON CONFLICT(mensagem_id) DO UPDATE SET dados=excluded.dados', (message_id,json.dumps(data)))
     return jsonify(ok=True)
+
+
+@app.put('/api/empresas/<int:company_id>')
+def editar_empresa(company_id):
+    try:
+        item = normalize_company(request.get_json(force=True))
+        with connect() as db:
+            if not db.execute('SELECT id FROM empresas WHERE id=?', (company_id,)).fetchone():
+                return jsonify(erro='Empresa não encontrada.'), 404
+            if db.execute('SELECT id FROM empresas WHERE id<>? AND (codigo=? OR (tipo=? AND documento=?))', (company_id,item['codigo'],item['tipo'],item['documento'])).fetchone():
+                return jsonify(erro='Código ou documento já utilizado por outra empresa.'), 409
+            db.execute('UPDATE empresas SET codigo=:codigo,nome=:nome,tipo=:tipo,documento=:documento WHERE id=:id', {**item,'id':company_id})
+        return jsonify(ok=True)
+    except (ValueError, sqlite3.IntegrityError) as error:
+        return jsonify(erro=str(error)), 400
+
+@app.route('/api/contatos/<int:contact_id>', methods=['PUT','DELETE'])
+def editar_contato(contact_id):
+    with connect() as db:
+        if not db.execute('SELECT id FROM contatos WHERE id=?', (contact_id,)).fetchone():
+            return jsonify(erro='Contato não encontrado.'), 404
+        if request.method == 'DELETE':
+            phone=db.execute('SELECT telefone FROM contatos WHERE id=?', (contact_id,)).fetchone()[0]
+            db.execute('INSERT OR IGNORE INTO contatos_excluidos(telefone) VALUES (?)', (phone_key(phone),))
+            db.execute('DELETE FROM contatos WHERE id=?', (contact_id,))
+            return jsonify(ok=True)
+        body=request.get_json(silent=True) or {}
+        try:
+            name=str(body.get('nome','')).strip()
+            phone=phone_key(body.get('telefone'))
+            if not name or len(name)>200:
+                raise ValueError('Informe um nome com até 200 caracteres.')
+            existing=[dict(r) for r in db.execute('SELECT nome,telefone FROM contatos WHERE id<>?', (contact_id,))]
+            if any(phone_key(r['telefone'])==phone for r in existing):
+                return jsonify(erro='Telefone já cadastrado.'), 409
+            db.execute('UPDATE contatos SET nome=?,telefone=? WHERE id=?', (name,'+'+phone,contact_id))
+            return jsonify(ok=True)
+        except (ValueError,sqlite3.IntegrityError) as error:
+            return jsonify(erro=str(error)),400
 
 if __name__=="__main__":
     init_db()
