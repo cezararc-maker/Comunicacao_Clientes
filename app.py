@@ -2,10 +2,13 @@ import os
 import hmac
 import re
 import io
+import csv
 import sqlite3
 from pathlib import Path
+from contextlib import contextmanager
 from flask import Flask, request, jsonify, send_from_directory
 from openpyxl import load_workbook
+from contact_import import phone_key, parse_csv, parse_vcard, inspect_contacts
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "dados"
@@ -14,11 +17,16 @@ DB = DATA / "comunicacao.db"
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.json.ensure_ascii = False
 
+@contextmanager
 def connect():
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys=ON")
-    return con
+    try:
+        with con:
+            yield con
+    finally:
+        con.close()
 
 def init_db():
     with connect() as db:
@@ -103,12 +111,18 @@ def contatos():
 def criar_contato():
     item = request.get_json(force=True)
     nome = str(item.get("nome","")).strip()
-    telefone = digits(item.get("telefone"))
-    if not nome or len(telefone) < 10 or len(telefone) > 15:
-        return jsonify(erro="Informe nome e telefone com 10 a 15 dígitos."), 400
+    try:
+        telefone = phone_key(item.get("telefone"))
+    except ValueError as exc:
+        return jsonify(erro=str(exc)), 400
+    if not nome or len(nome) > 200 or len(telefone) < 10 or len(telefone) > 15:
+        return jsonify(erro="Informe nome com até 200 caracteres e telefone com 10 a 15 dígitos."), 400
     try:
         with connect() as db:
-            db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (nome,telefone))
+            db.execute("BEGIN IMMEDIATE")
+            if any(r['status'] == 'existente' for r in inspect_contacts(db, [{'nome': nome, 'telefone': '+' + telefone}])):
+                return jsonify(erro="Telefone já cadastrado. Vincule a empresa ao contato existente."), 409
+            db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (nome,'+' + telefone))
         return jsonify(ok=True), 201
     except sqlite3.IntegrityError:
         return jsonify(erro="Telefone já cadastrado. Vincule a empresa ao contato existente."), 409
@@ -128,7 +142,7 @@ def vincular():
 def pesquisa():
     q = request.args.get("q","").strip()
     terms = f"%{q.lower()}%"
-    num = f"%{digits(q)}%" if digits(q) else "%"
+    num = f"%{digits(q)}%" if digits(q) else ""
     with connect() as db:
         rows = db.execute("""
           SELECT DISTINCT c.id,c.nome,c.telefone FROM contatos c
@@ -253,21 +267,69 @@ def sync_whatsapp_contacts():
         return jsonify(erro="Lista inválida"), 400
     novos, existentes = 0, 0
     with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        known = set()
+        for row in db.execute('SELECT telefone FROM contatos'):
+            try:
+                known.add(phone_key(row['telefone']))
+            except ValueError:
+                continue
         for item in items:
             if not isinstance(item, dict):
                 continue
-            phone = digits(item.get("telefone"))
+            try:
+                phone = phone_key('+' + digits(item.get("telefone")))
+            except ValueError:
+                continue
             name = str(item.get("nome", "")).strip()[:200]
             if not 10 <= len(phone) <= 15:
                 continue
-            if db.execute("SELECT 1 FROM contatos WHERE telefone=?", (phone,)).fetchone():
+            if phone in known:
                 existentes += 1
                 continue
             if not name:
                 name = phone
-            db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (name,phone))
+            db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (name,'+' + phone))
+            known.add(phone)
             novos += 1
     return jsonify(ok=True,novos=novos,existentes=existentes)
+
+
+@app.post('/api/contatos/importar/previa')
+def contact_preview():
+    uploaded = request.files.get('arquivo')
+    if not uploaded or not uploaded.filename.lower().endswith(('.csv', '.vcf')):
+        return jsonify(erro='Selecione um CSV do Google Contacts ou vCard (.vcf).'), 400
+    blob = uploaded.read(10 * 1024 * 1024 + 1)
+    if len(blob) > 10 * 1024 * 1024:
+        return jsonify(erro='Arquivo excede 10 MB.'), 400
+    try:
+        records = parse_csv(blob) if uploaded.filename.lower().endswith('.csv') else parse_vcard(blob)
+        if not records or len(records) > 20000:
+            raise ValueError('Arquivo vazio ou excede 20.000 telefones.')
+        with connect() as db:
+            return jsonify(linhas=inspect_contacts(db, records))
+    except (ValueError, UnicodeError, LookupError, csv.Error) as exc:
+        return jsonify(erro=f'Não foi possível ler os contatos: {exc}'), 400
+
+
+@app.post('/api/contatos/importar/confirmar')
+def contact_confirm():
+    body = request.get_json(silent=True)
+    records = body.get('linhas') if isinstance(body, dict) else None
+    if not isinstance(records, list) or not records or len(records) > 20000 or any(not isinstance(r, dict) for r in records):
+        return jsonify(erro='Lista de contatos inválida.'), 400
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        rows = inspect_contacts(db, records)
+        if any(r['status'] == 'invalido' for r in rows):
+            return jsonify(erro='Corrija os telefones e nomes inválidos antes de importar.', linhas=rows), 409
+        new = 0
+        for row in rows:
+            if row['status'] == 'novo':
+                db.execute('INSERT INTO contatos(nome,telefone) VALUES (?,?)', (row['nome'], row['telefone']))
+                new += 1
+    return jsonify(ok=True, novos=new, preservados=len(rows)-new)
 
 if __name__=="__main__":
     init_db()

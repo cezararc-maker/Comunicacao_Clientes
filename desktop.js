@@ -76,7 +76,8 @@ async function syncContactsAndChats(){
   update({});
   hydratePhotos(chats.slice(0,100).map(c=>({id:c.id?._serialized})).filter(c=>c.id)).catch(e=>console.error('Fotos:',e.message));
  }catch(e){errors.push('Conversas: '+e.message);}
- update({sync:errors.length?'parcial':'concluida',error:errors.length?'Sincronização parcial: '+errors.join(' | '):null});
+ if(errors.length)console.error('Detalhes da sincronização:',errors.join(' | '));
+ update({sync:errors.length?'parcial':'concluida',error:errors.length?'Alguns contatos ou conversas não puderam ser carregados. Clique em Sincronizar para tentar novamente.':null});
 }
 async function resetClient(){
  if(initializing||restarting)return;
@@ -121,6 +122,30 @@ ipcMain.handle('wa-send',async(e,info)=>{
  const options={};
  if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
  const sent=await client.sendMessage(chatId,text,options);storeMessage(sent);return true;
+});
+ipcMain.handle('wa-send-documents',async(e,info)=>{
+ if(!safeSender(e))throw Error('Janela não autorizada');
+ if(state.status!=='conectado')throw Error('Conecte o WhatsApp antes de enviar documentos.');
+ let chatId=String(info?.chatId||'');
+ if(!/^(\d{10,15}@c\.us|\d+(?:-\d+)?@g\.us)$/.test(chatId))throw Error('Selecione um destinatário válido.');
+ if(chatId.endsWith('@c.us')){
+  const number=await client.getNumberId(chatId.split('@')[0]);
+  if(!number)throw Error('Este telefone não está disponível no WhatsApp.');
+  chatId=number._serialized;
+ }
+ const selection=await dialog.showOpenDialog(window,{title:'Selecionar documentos para enviar',properties:['openFile','multiSelections']});
+ if(selection.canceled)return {canceled:true};
+ if(selection.filePaths.length>10)throw Error('Selecione no máximo 10 documentos por envio.');
+ for(const file of selection.filePaths){const stat=fs.statSync(file);if(!stat.isFile()||stat.size>20*1024*1024)throw Error('Cada documento deve ser um arquivo de até 20 MB.');}
+ const confirmation=await dialog.showMessageBox(window,{type:'question',title:'Enviar documentos',message:'Enviar '+selection.filePaths.length+' documento(s)?',detail:'Destinatário: '+(conversations.get(chatId)?.name||chatId.split('@')[0])+'\n'+selection.filePaths.map(f=>path.basename(f)).join('\n'),buttons:['Cancelar','Enviar'],defaultId:0,cancelId:0});
+ if(confirmation.response!==1)return {canceled:true};
+ const {MessageMedia}=require('whatsapp-web.js');
+ let sent=0;
+ for(const file of selection.filePaths){
+  try{const msg=await client.sendMessage(chatId,MessageMedia.fromFilePath(file),{sendMediaAsDocument:true});storeMessage(msg);sent++;}
+  catch{ return {sent,error:'O envio foi interrompido. Confira os documentos já enviados antes de tentar novamente.'}; }
+ }
+ return {sent};
 });
 ipcMain.handle('wa-create-group',async(e,info)=>{
  if(!safeSender(e))throw Error('Janela não autorizada');
