@@ -4,14 +4,17 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const crypto = require('node:crypto');
 const QRCode = require('qrcode');
 let window, pythonProcess, client;
-let state = { status:'iniciando', qr:null, error:null, conversations:[] };
+let restarting=false, initializing=false;
+const syncToken=crypto.randomBytes(32).toString('hex');
+let state = { status:'desconectado', qr:null, error:null, conversations:[], contactsCount:0, sync:'aguardando' };
 const conversations = new Map();
 function update(patch){state={...state,...patch,conversations:[...conversations.values()].sort((a,b)=>b.timestamp-a.timestamp).slice(0,100)}; if(window && !window.isDestroyed()) window.webContents.send('wa-state', state);}
 function safeSender(event){return !!window && event.sender.id === window.webContents.id && event.sender.getURL().startsWith('http://127.0.0.1:8765/');}
 function startPython(){
- const args=['app.py'], options={cwd:__dirname,windowsHide:true};
+ const args=['app.py'], options={cwd:__dirname,windowsHide:true,env:{...process.env,WA_SYNC_TOKEN:syncToken}};
  if(process.platform==='win32') pythonProcess=spawn('py',['-3',...args],options);
  else pythonProcess=spawn('python3',args,options);
  pythonProcess.on('error',e=>update({error:'Servidor Python: '+e.message}));
@@ -34,20 +37,53 @@ function storeMessage(msg){
  chat.messages=chat.messages.slice(-100);
  chat.timestamp=Math.max(chat.timestamp,entry.timestamp);conversations.set(id,chat);update({});
 }
+async function syncContactsAndChats(){
+ update({sync:'sincronizando',error:null});
+ try{
+  const contacts=await client.getContacts();
+  const sanitized=contacts.filter(c=>!c.isGroup&&!c.isMe&&c.id && c.id.server==='c.us' && /^\d{10,15}$/.test(c.id.user))
+    .map(c=>({telefone:c.id.user,nome:String(c.name||c.pushname||c.shortName||'').trim()}));
+  const unique=[...new Map(sanitized.map(c=>[c.telefone,c])).values()];
+  const response=await fetch('http://127.0.0.1:8765/api/whatsapp/sync',{
+    method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},
+    body:JSON.stringify({contatos:unique})
+  });
+  if(!response.ok)throw new Error('A sincronização com o cadastro local falhou: HTTP '+response.status);
+  const result=await response.json();
+  update({contactsCount:unique.length,sync:'concluida',syncResult:result});
+  const chats=await client.getChats();
+  for(const c of chats.filter(c=>!c.isGroup).slice(0,250)){
+   const chatId=c.id?._serialized;
+   if(!chatId)continue;
+   const existing=conversations.get(chatId)||{id:chatId,messages:[],timestamp:0};
+   const next={...existing,id:chatId,name:c.name||existing.name||c.id.user,timestamp:c.timestamp||existing.timestamp||0};
+   conversations.set(chatId,next);
+  }
+  update({});
+ }catch(e){update({sync:'erro',error:'Sincronização: '+e.message});}
+}
+async function resetClient(){
+ if(initializing||restarting)return;
+ restarting=true;update({status:'reconectando',qr:null,error:null});
+ try{if(client)await client.destroy()}catch(e){console.error('Falha ao destruir sessão:',e.message)}
+ client=null;restarting=false;startWhatsapp();
+}
 async function startWhatsapp(){
+ if(initializing)return;
+ initializing=true;
+ update({status:'iniciando',qr:null,error:null});
  try {
   const { Client, LocalAuth }=require('whatsapp-web.js');
   client=new Client({authStrategy:new LocalAuth({dataPath:path.join(app.getPath('userData'),'wa-session')}),puppeteer:{headless:true,args:['--no-sandbox','--disable-setuid-sandbox']}});
   client.on('qr',async q=>{ try { update({status:'qr',qr:await QRCode.toDataURL(q,{margin:2,width:320}),error:null}); } catch(e){update({status:'erro',error:e.message})} });
   client.on('authenticated',()=>update({status:'autenticado',qr:null,error:null}));
-  client.on('ready',async()=>{update({status:'conectado',qr:null,error:null});
-   try{const chats=await client.getChats();for(const c of chats.filter(c=>!c.isGroup).slice(0,75)){conversations.set(c.id._serialized,{id:c.id._serialized,name:c.name||c.id.user,messages:[],timestamp:c.timestamp||0});}update({});}catch(e){console.error(e);}
-  });
+  client.on('ready',async()=>{update({status:'conectado',qr:null,error:null});await syncContactsAndChats();});
   client.on('message',storeMessage);client.on('message_create',storeMessage);
-  client.on('disconnected',reason=>update({status:'desconectado',qr:null,error:String(reason)}));
+  client.on('disconnected',reason=>update({status:'desconectado',qr:null,error:'Sessão desconectada: '+String(reason)}));
   client.on('auth_failure',msg=>update({status:'erro',error:'Falha de autenticação: '+msg,qr:null}));
   await client.initialize();
  }catch(e){update({status:'erro',error:e.message,qr:null})}
+ finally{initializing=false}
 }
 app.whenReady().then(async()=>{
  startPython();
@@ -59,6 +95,8 @@ app.whenReady().then(async()=>{
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });
 ipcMain.handle('wa-state',e=>safeSender(e)?state:null);
+ipcMain.handle('wa-reconnect',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');await resetClient();return true});
+ipcMain.handle('wa-sync',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(state.status!=='conectado')throw new Error('WhatsApp não conectado');await syncContactsAndChats();return true});
 ipcMain.handle('wa-send',async(e,info)=>{
  if(!safeSender(e))throw new Error('Janela não autorizada');
  if(state.status!=='conectado')throw new Error('Conecte o WhatsApp primeiro');

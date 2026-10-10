@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comunicação Clientes v0.3.0</title>
+<title>Comunicação Clientes v0.3.1</title>
 <style>
 :root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
 *{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
@@ -87,7 +87,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 .composer-hint{display:block;text-align:right;margin:5px 55px 0 0;font-size:10px}
 #cancelreply{padding:5px 10px;font-size:11px}
 @media(max-width:950px){.chat-layout{grid-template-columns:280px minmax(0,1fr)}.app-shell{grid-template-columns:65px minmax(0,1fr)}nav .rail-button{width:55px}.chat-list-header{padding:20px 15px}}
-</style></head>
+.connection-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.connection-actions button{font-size:12px;padding:8px 10px}#syncstatus{font-size:12px;color:#607870}</style></head>
 <body><main class="app-shell">
 <aside class="app-rail"><div class="brand-mark" title="Comunicação Clientes">C</div>
 <nav class="rail-nav" aria-label="Menu principal">
@@ -102,7 +102,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 <div class="chat-sidebar"><div class="chat-list-header"><div><h2>Conversas</h2><small>Central de atendimento</small></div><button class="icon-button" onclick="tab('busca')" title="Localizar contatos">⌕</button></div>
 <div class="connection-bar"><span id="wastatusWrap" class="status-pill status-disconnected" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="wastatus">Desconectado</span></span>
 <button class="icon-button" onclick="toggleQr()" title="Mostrar conexão QR Code" aria-label="Mostrar QR Code">⚙</button></div>
-<div id="qrpanel" class="qr-panel hidden"><h3>Conexão WhatsApp</h3><p id="waerror" class="warning"></p><div id="qrarea"></div><small>No celular: Aparelhos conectados → Conectar aparelho. A conexão é experimental.</small></div>
+<div id="qrpanel" class="qr-panel hidden"><h3>Conexão WhatsApp</h3><div class="connection-actions"><button class="secondary" onclick="reconnectWA()">Reconectar</button><button class="secondary" onclick="syncWA()">Sincronizar contatos</button></div><p id="syncstatus"><small>Sincronização pendente.</small></p><p id="waerror" class="warning"></p><div id="qrarea"></div><small>No celular: Aparelhos conectados → Conectar aparelho. A conexão é experimental.</small></div>
 <div class="chat-search-wrap"><input id="chatfilter" oninput="renderWA()" placeholder="⌕  Pesquisar conversas" aria-label="Pesquisar conversas"></div>
 <div id="wachats" class="chat-list"></div></div>
 <div class="conversation-panel"><div class="conversation-header"><div class="avatar">◉</div><div class="contact-heading"><h3 id="wachattitle">Selecione uma conversa</h3><small id="chatcaption">Mensagens e atendimento</small></div><button class="icon-button" onclick="tab('contatos')" title="Contatos e vínculos">♧</button><button class="icon-button" onclick="toggleQr()" title="Conexão e configurações">⋮</button></div>
@@ -158,6 +158,8 @@ async function confirmar(){try{let d=await api('/api/importar/confirmar',json('P
 
 let waState={status:'desconectado',conversations:[]},waChat=null,quoted=null;
 function toggleQr(){$('qrpanel').classList.toggle('hidden')}
+async function reconnectWA(){try{await window.desktopApi.reconnect();aviso("Reconexão solicitada.",true)}catch(e){aviso(e.message)}}
+async function syncWA(){try{await window.desktopApi.syncContacts();aviso("Sincronização iniciada.",true);await atualizar()}catch(e){aviso(e.message)}}
 function waStartup(){if(!window.desktopApi){$('wastatus').textContent='Disponível somente no aplicativo desktop';return;}
  window.desktopApi.onState(s=>{waState=s;renderWA()});
  window.desktopApi.getState().then(s=>{if(s){waState=s;renderWA()}});}
@@ -166,9 +168,11 @@ function renderWA(){
  $('wastatus').textContent=conectado?'Conectado':'Desconectado';
  $('wastatusWrap').className='status-pill '+(conectado?'status-connected':'status-disconnected');
  $('waerror').textContent=waState.error||'';
+ $('syncstatus').textContent='Contatos do WhatsApp: '+(waState.contactsCount||0)+' · Sincronização: '+(waState.sync||'aguardando');
  $('qrarea').innerHTML=waState.qr?'<img alt="QR Code WhatsApp" src="'+waState.qr+'">':'';
  if(waState.qr && !$('qrpanel').dataset.seen){$('qrpanel').classList.remove('hidden');$('qrpanel').dataset.seen='1'}
  if(conectado){$('qrpanel').classList.add('hidden');delete $('qrpanel').dataset.seen}
+ if(['desconectado','erro','reconectando'].includes(waState.status)){$('qrpanel').classList.remove('hidden')}
  const filter=($('chatfilter').value||'').toLocaleLowerCase('pt-BR');
  const chats=(waState.conversations||[]).filter(c=>(c.name||c.id).toLocaleLowerCase('pt-BR').includes(filter));
  $('wachats').innerHTML=chats.map(c=>'<div class="item '+(c.id===waChat?'selected':'')+'" data-chat="'+escapeHtml(c.id)+'"><div class="chat-preview"><div class="chat-avatar">'+escapeHtml((c.name||c.id).slice(0,1).toUpperCase())+'</div><div style="min-width:0"><div class="chat-contact-name">'+escapeHtml(c.name||c.id)+'</div><div class="chat-preview-text">'+escapeHtml(c.messages?.at(-1)?.body||'Clique para abrir a conversa')+'</div></div></div></div>').join('')||'<div class="item"><small>Nenhuma conversa encontrada.</small></div>';

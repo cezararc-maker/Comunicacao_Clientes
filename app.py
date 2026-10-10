@@ -1,4 +1,5 @@
 import os
+import hmac
 import re
 import io
 import sqlite3
@@ -238,6 +239,35 @@ def confirmar():
                 db.execute("UPDATE empresas SET nome=? WHERE codigo=? AND tipo=? AND documento=?",
                            (r["nome"],r["codigo"],r["tipo"],r["documento"]))
     return jsonify(ok=True,importados=len(rows))
+
+
+@app.post("/api/whatsapp/sync")
+def sync_whatsapp_contacts():
+    token = os.environ.get("WA_SYNC_TOKEN", "")
+    received = request.headers.get("X-Sync-Token", "")
+    if not token or not hmac.compare_digest(token, received):
+        return jsonify(erro="Não autorizado"), 403
+    data = request.get_json(silent=True) or {}
+    items = data.get("contatos", [])
+    if not isinstance(items, list) or len(items) > 20000:
+        return jsonify(erro="Lista inválida"), 400
+    novos, existentes = 0, 0
+    with connect() as db:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            phone = digits(item.get("telefone"))
+            name = str(item.get("nome", "")).strip()[:200]
+            if not 10 <= len(phone) <= 15:
+                continue
+            if db.execute("SELECT 1 FROM contatos WHERE telefone=?", (phone,)).fetchone():
+                existentes += 1
+                continue
+            if not name:
+                name = phone
+            db.execute("INSERT INTO contatos(nome,telefone) VALUES (?,?)", (name,phone))
+            novos += 1
+    return jsonify(ok=True,novos=novos,existentes=existentes)
 
 if __name__=="__main__":
     init_db()
