@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comunicação Clientes v0.8.4</title>
+<title>Comunicação Clientes v0.8.5</title>
 <style>
 :root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
 *{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
@@ -98,7 +98,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 .composer-tools{flex-wrap:nowrap}.composer-row .composer-tools .icon-button{width:36px;height:36px;padding:5px;display:grid;place-items:center}.composer-tools .icon-button img{width:26px;height:26px}.paperclip-icon{display:block;width:25px;height:25px;background:#087d6e;mask:url('/static/icons/paperclip.svg') center/contain no-repeat}.attachment-panel{position:absolute;bottom:46px;left:0;min-width:230px;padding:8px;background:#fff;border:1px solid #dce8e2;border-radius:12px;box-shadow:0 5px 24px #1233;z-index:12}.attachment-panel>button{display:block;width:100%;text-align:left;padding:12px}.attachment-panel .emoji-panel{position:static;box-shadow:none;width:276px;padding:5px}.receipt{margin-left:6px;color:#71837c;font-size:13px}.receipt.read{color:#1397c7}.receipt.failed{color:#b02e20}.chat-company{font-size:11px;color:#497568;line-height:1.5;margin-top:3px;white-space:normal}.message-attachment video,.media-preview video{max-width:100%;max-height:330px}.file-download{display:block;padding:12px;color:#087d6e;overflow-wrap:anywhere}
 #record-audio svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}#record-audio{color:white}.chat-company span{display:inline-block}
 </style><link rel="stylesheet" href="/static/theme.css"></head>
-<body><div class="titlebar"><div class="window-controls"><button class="window-control maximize" data-action="maximize" aria-label="Maximizar ou restaurar" title="Maximizar ou restaurar"><span>+</span></button><button class="window-control minimize" data-action="minimize" aria-label="Minimizar janela" title="Minimizar"><span>−</span></button><button class="window-control close" data-action="close" aria-label="Fechar janela" title="Fechar"><span>×</span></button></div><span>Comunicação Clientes</span></div><main class="app-shell">
+<body><div class="titlebar"><div class="window-controls"><button class="window-control maximize" data-action="maximize" aria-label="Maximizar ou restaurar" title="Maximizar ou restaurar"><span aria-hidden="true"></span></button><button class="window-control minimize" data-action="minimize" aria-label="Minimizar janela" title="Minimizar"><span aria-hidden="true"></span></button><button class="window-control close" data-action="close" aria-label="Fechar janela" title="Fechar"><span aria-hidden="true"></span></button></div><span>Comunicação Clientes</span></div><main class="app-shell">
 <aside class="app-rail"><div class="brand-mark" title="Comunicação Clientes">C</div>
 <nav class="rail-nav" aria-label="Menu principal">
 <button class="rail-button active" onclick="tab('whatsapp')" id="menu-whatsapp" title="Conversas" aria-label="Conversas"><img class="nav-icon message-icon" src="/static/icons/messages.svg" alt=""><span>Conversas</span></button>
@@ -106,7 +106,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 <button class="rail-button" onclick="tab('empresas')" id="menu-empresas" title="Empresas" aria-label="Empresas">▦<span>Empresas</span></button>
 <button class="rail-button" onclick="tab('contatos')" id="menu-contatos" title="Contatos e vínculos" aria-label="Contatos"><img class="nav-icon contact-icon" src="/static/icons/contacts.webp" alt=""><span>Contatos</span></button>
 <button class="rail-button" onclick="tab('importar')" id="menu-importar" title="Importar Excel" aria-label="Importar Excel">⇩<span>Importar</span></button>
-</nav><div class="rail-footer" title="Versão 0.8.4">v0.8.4</div></aside>
+</nav><div class="rail-footer" title="Versão 0.8.5">v0.8.5</div></aside>
 <section class="workspace"><div id="feedback"></div>
 <div id="view-whatsapp" class="chat-layout">
 <div class="chat-sidebar"><div class="chat-list-header"><div><h2>Conversas</h2><small>Central de atendimento</small></div><div class="header-actions"><button class="icon-button settings-trigger" onclick="toggleSettings()" aria-haspopup="menu" aria-expanded="false" aria-label="Abrir configurações" title="Configurações">⚙</button><button class="icon-button new-chat-button" onclick="newGroup()" title="Criar grupo" aria-label="Criar grupo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div></div>

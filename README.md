@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.8.4 — aplicativo desktop (teste)
+# Comunicação Clientes v0.8.5 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -82,3 +82,5 @@ Na v0.8.2, clicar no nome do contato ou grupo abre as informações em uma colun
 Na v0.8.3, os controles de janela passam a usar círculos de 16 px (antes 13 px), na ordem verde, amarelo e vermelho, da esquerda para a direita.
 
 Na v0.8.4, o duplo clique em toda a linha responde à mensagem. O menu ⋮ de cada mensagem permite fixar por 1 hora ou 7 dias e desafixar. As demandas ficam no topo da conversa e são preservadas no banco local até expirarem; não são fixações compartilhadas no WhatsApp.
+
+Na v0.8.5, os controles da janela não exibem símbolos e acendem na própria cor ao passar o mouse ou receber foco pelo teclado.
