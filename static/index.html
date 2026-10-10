@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comunicação Clientes v0.4.0</title>
+<style>
+:root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
+*{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
+main{display:grid;grid-template-columns:310px 1fr;min-height:calc(100vh - 67px)}
+aside{background:#fff;border-right:1px solid #d5dedb;padding:20px}
+section{padding:26px;max-width:1100px;width:100%}h2{margin:0 0 16px}
+button{background:#087d6e;color:white;border:0;border-radius:7px;padding:10px 14px;cursor:pointer;font-weight:600}
+button.secondary{background:#e0ebe8;color:#075e54}input,select{padding:11px;border:1px solid #b8cbc5;border-radius:6px;width:100%;margin:5px 0 12px;font:inherit}
+.card{background:white;border-radius:10px;padding:18px;margin-bottom:16px;box-shadow:0 2px 8px #152d2b12}
+nav button{display:block;width:100%;text-align:left;margin:9px 0}nav button.active{background:#075e54}
+.item{padding:12px;border-bottom:1px solid #e4eae7}small{color:#657773}.tag{display:inline-block;background:#e0f3ee;color:#075e54;border-radius:14px;margin:3px 5px 3px 0;padding:4px 10px;font-size:12px}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.hidden{display:none}table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:9px;border-bottom:1px solid #ddd;text-align:left}th{background:#e8f0ed}
+#feedback{color:#8a4515;min-height:24px;white-space:pre-wrap}.ok{color:#087d6e!important}.warning{color:#ad450e}
+@media(max-width:760px){main{display:block}.cols,.grid3{grid-template-columns:1fr}}
+
+.status-pill{display:inline-flex;align-items:center;gap:10px;padding:9px 17px;border-radius:9999px;font-weight:700;font-size:14px;line-height:1.15;border:1px solid transparent}
+.status-dot{display:inline-block;flex-shrink:0;width:12px;height:12px;border-radius:50%}
+.status-connected{color:#106b32;background:linear-gradient(180deg,#edfff0,#d7ffdf);border-color:#93e9a4;box-shadow:inset 0 0 10px #6dff8a33,0 0 10px #44dd5a33}
+.status-connected .status-dot{background:#10c746;box-shadow:0 0 5px #0dcb46,0 0 12px #17df5d,0 0 18px #30ff7155}
+.status-disconnected{color:#ad2424;background:linear-gradient(180deg,#fff0f0,#ffdddd);border-color:#f0aaaa;box-shadow:inset 0 0 10px #ff777733,0 0 10px #ff555522}
+.status-disconnected .status-dot{background:#e53935;box-shadow:0 0 5px #e53935,0 0 12px #f44844,0 0 18px #ff666655}
+
+/* Aplicativo desktop: navegação por ícones e conversa em tela cheia */
+body{background:#f0f2f5;color:#142a27}
+body>header{display:none}
+.app-shell{display:grid;grid-template-columns:76px minmax(0,1fr);height:100vh;min-height:520px;background:#fff}
+.app-rail{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;background:#f0f2f5;border-right:1px solid #dce4e2;padding:18px 6px;min-width:0}
+.brand-mark{display:grid;place-items:center;width:43px;height:43px;border-radius:14px;background:#087c6a;color:#fff;font-size:24px;font-weight:800;margin:4px 0 27px;box-shadow:0 5px 12px #087c6a36}
+.rail-nav{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
+nav .rail-button{display:flex;flex-direction:column;align-items:center;gap:4px;width:66px;margin:0;padding:12px 3px 9px;border-radius:12px;background:transparent;color:#687974;font-size:22px;line-height:1;border:0}
+.rail-button span{font-size:10px;font-weight:600}
+nav .rail-button.active{background:#dceee7;color:#076c5a}
+.rail-button:hover,.icon-button:hover{background:#e1ebe7}
+.rail-footer{margin-top:auto;font-size:10px;color:#84918c}
+.workspace{padding:0;max-width:none;width:100%;height:100vh;min-width:0;overflow:hidden;position:relative}
+.workspace>#feedback{position:absolute;bottom:95px;right:16px;z-index:5;max-width:440px;background:#fff9f0;border-radius:12px;padding:0 10px;box-shadow:0 6px 20px #0002}
+.workspace>#feedback:empty{display:none}
+.workspace>#feedback.ok{background:#e4f7eb}
+.workspace>div[id^="view-"]:not(.chat-layout){height:100vh;overflow:auto;padding:30px 38px;background:#f7f9f8}
+.chat-layout{display:grid;grid-template-columns:350px minmax(0,1fr);height:100vh;min-height:0}
+.chat-layout.hidden,.hidden{display:none!important}
+.chat-sidebar{display:flex;flex-direction:column;min-height:0;background:#fff;border-right:1px solid #e1e6e4}
+.chat-list-header{display:flex;align-items:center;justify-content:space-between;padding:23px 22px 16px}
+.chat-list-header h2{font-size:24px;margin:0 0 4px;letter-spacing:-.7px}
+.chat-list-header small{font-size:12px}
+.icon-button{width:38px;height:38px;display:grid;place-items:center;background:transparent;border:0;border-radius:50%;font-size:23px;color:#526660;flex-shrink:0;cursor:pointer}
+.icon-button:disabled{opacity:.4;cursor:not-allowed}
+.connection-bar{display:flex;align-items:center;justify-content:space-between;padding:0 17px 15px 22px}
+.connection-bar .status-pill{font-size:12px;padding:7px 11px}
+.connection-bar .status-dot{height:10px;width:10px}
+.qr-panel{margin:0 16px 14px;padding:16px;border:1px solid #dce6e2;border-radius:13px;background:#f8fbfa;text-align:center;max-height:350px;overflow:auto}
+.qr-panel h3{margin:0 0 10px}
+.qr-panel img{max-width:220px!important;width:100%}
+.chat-search-wrap{padding:0 14px 10px}
+.chat-search-wrap input{margin:0;background:#f1f4f3;border:none;border-radius:9px;padding:12px 15px}
+.chat-list{overflow-y:auto;flex:1}
+.chat-list .item{padding:15px 17px;cursor:pointer;transition:background .12s}
+.chat-list .item:hover{background:#f4f7f6}
+.chat-list .item.selected{background:#e9f4f0}
+.chat-list .item .chat-preview{display:flex;align-items:center;gap:11px}
+.chat-avatar,.avatar{display:grid;place-items:center;border-radius:50%;background:#dcece7;color:#08735e;font-weight:700;flex-shrink:0}
+.chat-avatar{width:47px;height:47px;font-size:18px}
+.chat-contact-name{font-weight:650;font-size:14px}
+.chat-preview-text{font-size:12px;color:#81918b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px;margin-top:5px}
+.conversation-panel{display:flex;min-height:0;min-width:0;flex-direction:column;background:#efeae2}
+.conversation-header{display:flex;align-items:center;gap:13px;background:#f6f8f7;border-bottom:1px solid #dde4e0;padding:14px 21px;height:76px}
+.avatar{width:43px;height:43px}
+.contact-heading{flex:1;min-width:0}
+.contact-heading h3{font-size:15px;margin:0 0 4px}
+.contact-heading small{font-size:12px}
+.message-area{flex:1;overflow:auto;padding:26px max(24px,5%);background-color:#eae6dc;background-image:radial-gradient(#ffffff40 1px,transparent 1px);background-size:24px 24px;display:flex;flex-direction:column;gap:8px}
+.message-area .item{max-width:75%;width:fit-content;border:0;padding:10px 13px;border-radius:10px;background:white;box-shadow:0 1px 2px #00000012;align-self:flex-start;text-align:left!important;white-space:pre-wrap;overflow-wrap:anywhere}
+.message-area .item.outgoing{align-self:flex-end;background:#dcf8c6}
+.empty-chat{margin:auto;text-align:center;color:#657570}
+.empty-icon{margin:auto auto 16px;display:grid;place-items:center;width:76px;height:76px;font-size:48px;background:#d6e9df;border-radius:50%;color:#08735e}
+.empty-chat h2{font-size:25px;margin:0 0 12px}
+.composer{background:#f6f8f7;padding:12px 20px}
+.composer-row{display:flex;align-items:center;gap:12px}
+.composer-row textarea{margin:0;resize:none;min-height:44px;max-height:110px;padding:12px 15px;border:none;background:white;border-radius:10px;flex:1}
+.send-button{width:45px;height:45px;border-radius:50%;font-size:18px;background:#087e68}
+.reply-banner{font-size:12px;color:#087e68;min-height:0;margin-bottom:6px}
+.reply-banner:empty{display:none}
+.composer-hint{display:block;text-align:right;margin:5px 55px 0 0;font-size:10px}
+#cancelreply{padding:5px 10px;font-size:11px}
+@media(max-width:950px){.chat-layout{grid-template-columns:280px minmax(0,1fr)}.app-shell{grid-template-columns:65px minmax(0,1fr)}nav .rail-button{width:55px}.chat-list-header{padding:20px 15px}}
+.connection-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.connection-actions button{font-size:12px;padding:8px 10px}#syncstatus{font-size:12px;color:#607870}.composer-row{gap:8px;align-items:center}.composer-row textarea{width:100%;min-width:0;min-height:44px;line-height:20px;font-family:inherit;font-size:14px}.send-button{flex:0 0 44px;display:grid;place-items:center;margin:0;padding:0}.composer-hint{margin:6px 0 0;text-align:right}.chat-avatar,.avatar{overflow:hidden}.chat-avatar img,.avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}.composer{padding:10px 16px}.composer-row .icon-button{display:none}.chat-list .item{min-width:0}</style></head>
+<body><main class="app-shell">
+<aside class="app-rail"><div class="brand-mark" title="Comunicação Clientes">C</div>
+<nav class="rail-nav" aria-label="Menu principal">
+<button class="rail-button active" onclick="tab('whatsapp')" id="menu-whatsapp" title="Conversas" aria-label="Conversas">◉<span>Conversas</span></button>
+<button class="rail-button" onclick="tab('busca')" id="menu-busca" title="Pesquisar contatos" aria-label="Pesquisar contatos">⌕<span>Busca</span></button>
+<button class="rail-button" onclick="tab('empresas')" id="menu-empresas" title="Empresas" aria-label="Empresas">▦<span>Empresas</span></button>
+<button class="rail-button" onclick="tab('contatos')" id="menu-contatos" title="Contatos e vínculos" aria-label="Contatos">👤<span>Contatos</span></button>
+<button class="rail-button" onclick="tab('importar')" id="menu-importar" title="Importar Excel" aria-label="Importar Excel">⇩<span>Importar</span></button>
+</nav><div class="rail-footer" title="Versão 0.3.0">v0.4</div></aside>
+<section class="workspace"><div id="feedback"></div>
+<div id="view-whatsapp" class="chat-layout">
+<div class="chat-sidebar"><div class="chat-list-header"><div><h2>Conversas</h2><small>Central de atendimento</small></div><button class="icon-button" onclick="newGroup()" title="Criar grupo" aria-label="Criar grupo">⊕</button></div>
+<div class="connection-bar"><span id="wastatusWrap" class="status-pill status-disconnected" role="status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="wastatus">Desconectado</span></span>
+<button class="icon-button" onclick="toggleQr()" title="Mostrar conexão QR Code" aria-label="Mostrar QR Code">⚙</button></div>
+<div id="qrpanel" class="qr-panel hidden"><h3>Conexão WhatsApp</h3><div class="connection-actions"><button class="secondary" onclick="reconnectWA()">Reconectar</button><button class="secondary" onclick="syncWA()">Sincronizar contatos e grupos</button><button class="secondary" onclick="refreshPhotos()">Atualizar fotos</button></div><p id="syncstatus"><small>Sincronização pendente.</small></p><p id="waerror" class="warning"></p><div id="qrarea"></div><small>No celular: Aparelhos conectados → Conectar aparelho. A conexão é experimental.</small></div>
+<div class="chat-search-wrap"><input id="chatfilter" oninput="renderWA()" placeholder="⌕  Pesquisar conversas" aria-label="Pesquisar conversas"></div>
+<div id="wachats" class="chat-list"></div></div>
+<div class="conversation-panel"><div class="conversation-header"><div class="avatar">◉</div><div class="contact-heading"><h3 id="wachattitle">Selecione uma conversa</h3><small id="chatcaption">Mensagens e atendimento</small></div><button class="icon-button" onclick="tab('contatos')" title="Contatos e vínculos" aria-label="Ver contatos">👤</button><button class="icon-button" onclick="toggleQr()" title="Conexão e configurações">⋮</button></div>
+<div id="wamessages" class="message-area"><div class="empty-chat"><div class="empty-icon">◉</div><h2>Comunicação Clientes</h2><p>Selecione uma conversa à esquerda para começar.</p></div></div>
+<div class="composer"><div id="wareply" class="reply-banner"></div><div class="composer-row">
+<textarea id="wamessage" rows="1" placeholder="Digite uma mensagem" aria-label="Mensagem"></textarea><button class="send-button" onclick="sendWA()" title="Enviar mensagem" aria-label="Enviar mensagem">➤</button></div>
+<small class="composer-hint">Dois cliques na mensagem para responder · Enter envia · Shift+Enter quebra linha</small><button id="cancelreply" class="secondary hidden" onclick="cancelReply()">Cancelar resposta</button></div>
+</div></div>
+<div id="view-busca"><h2>Pesquisa integrada</h2><div class="card"><label>Nome do contato, telefone, empresa, código ou documento</label>
+<input id="q" placeholder="Digite para pesquisar..." oninput="pesquisar()"><div id="results"></div></div></div>
+<div id="view-empresas" class="hidden"><h2>Empresas</h2><div class="card">
+<h3>Novo cadastro</h3><div class="cols"><label>Código da empresa<input id="ecodigo" placeholder="Ex.: 698"></label>
+<label>Nome da empresa<input id="enome"></label></div><div class="cols">
+<label>Tipo de inscrição<select id="etipo"><option>CNPJ</option><option>CPF</option><option>CAEPF</option><option>CEI</option></select></label>
+<label>Número da inscrição<input id="edoc" placeholder="Somente números ou formatado"></label></div>
+<button onclick="criarEmpresa()">Cadastrar empresa</button></div><div class="card"><h3>Empresas cadastradas</h3><div id="listaempresas"></div></div></div>
+<div id="view-contatos" class="hidden"><h2>Contatos e vínculos</h2><div class="card">
+<h3>Novo contato</h3><div class="cols"><label>Nome<input id="cnome"></label><label>Telefone com DDD<input id="ctel"></label></div>
+<button onclick="criarContato()">Cadastrar contato</button></div><div class="card"><h3>Vincular contato a empresa</h3>
+<div class="grid3"><label>Contato<select id="selcontato"></select></label><label>Empresa<select id="selempresa"></select></label>
+<label>Função<input id="cfuncao" placeholder="Ex.: Responsável DP"></label></div>
+<button onclick="vincular()">Salvar vínculo</button></div>
+<div class="card"><h3>Contatos cadastrados</h3><div id="listacontatos"></div></div></div>
+<div id="view-importar" class="hidden"><h2>Importação de empresas</h2>
+<div class="card"><p>Planilha .xlsx com colunas <b>Código</b>, <b>Nome da empresa</b>, <b>Tipo de inscrição</b> e <b>Documento</b>. Não altere zeros à esquerda.</p>
+<input type="file" id="arquivo" accept=".xlsx"><button onclick="previa()">Analisar Excel</button></div>
+<div class="card hidden" id="prevbox"><h3>Prévia da importação</h3><p id="resumo"></p>
+<div style="overflow:auto"><table><thead><tr><th>Linha</th><th>Código</th><th>Nome</th><th>Tipo</th><th>Documento</th><th>Situação</th></tr></thead><tbody id="prevrows"></tbody></table></div>
+<p><small>Conflitos e linhas inválidas bloqueiam a confirmação. Corrija o Excel e analise novamente.</small></p>
+<button id="confirmar" onclick="confirmar()">Confirmar importação</button></div></div>
+</section></main>
+<script>
+let empresas=[],contatos=[],linhas=[];
+const $=id=>document.getElementById(id);
+async function api(url,opts={}){let r=await fetch(url,opts);let d=await r.json();if(!r.ok)throw Error(d.erro||'Falha na operação');return d}
+const json=(method,body)=>({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+function aviso(text,ok=false){$('feedback').textContent=text;$('feedback').className=ok?'ok':''}
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]))}
+function tab(t){for(let x of ['whatsapp','busca','empresas','contatos','importar']){$('view-'+x).classList.toggle('hidden',x!==t);$('menu-'+x).classList.toggle('active',x===t)}aviso('');if(t==='busca')pesquisar();else atualizar()}
+async function atualizar(){try{[empresas,contatos]=await Promise.all([api('/api/empresas'),api('/api/contatos')]);
+$('listaempresas').innerHTML=empresas.map(e=>'<div class="item"><b>'+escapeHtml(e.nome)+'</b><br><small>Código '+escapeHtml(e.codigo)+' · '+escapeHtml(e.tipo)+' '+escapeHtml(e.documento)+'</small></div>').join('')||'Nenhuma empresa cadastrada.';
+$('listacontatos').innerHTML=contatos.map(c=>'<div class="item"><b>'+escapeHtml(c.nome)+'</b> · '+escapeHtml(c.telefone)+'<br>'+badges(c.empresas)+'</div>').join('')||'Nenhum contato cadastrado.';
+$('selempresa').innerHTML=empresas.map(e=>'<option value="'+e.id+'">'+escapeHtml(e.codigo)+' - '+escapeHtml(e.nome)+'</option>').join('');
+$('selcontato').innerHTML=contatos.map(c=>'<option value="'+c.id+'">'+escapeHtml(c.nome)+' - '+escapeHtml(c.telefone)+'</option>').join('');
+}catch(e){aviso(e.message)}}
+function badges(arr){return arr.length?arr.map(e=>'<span class="tag">'+escapeHtml(e.nome)+(e.funcao?' · '+escapeHtml(e.funcao):'')+'</span>').join(''):'<small>Sem empresa vinculada</small>'}
+async function pesquisar(){try{let q=$('q').value;let rows=await api('/api/pesquisa?q='+encodeURIComponent(q));$('results').innerHTML=rows.map(c=>'<div class="item"><b>'+escapeHtml(c.nome)+'</b> · <small>'+escapeHtml(c.telefone)+'</small><br>'+badges(c.empresas)+'</div>').join('')||'<p>Nenhum contato encontrado.</p>'}catch(e){aviso(e.message)}}
+async function criarEmpresa(){try{await api('/api/empresas',json('POST',{codigo:$('ecodigo').value,nome:$('enome').value,tipo:$('etipo').value,documento:$('edoc').value}));aviso('Empresa cadastrada.',true);await atualizar()}catch(e){aviso(e.message)}}
+async function criarContato(){try{await api('/api/contatos',json('POST',{nome:$('cnome').value,telefone:$('ctel').value}));aviso('Contato cadastrado.',true);await atualizar()}catch(e){aviso(e.message)}}
+async function vincular(){try{await api('/api/vinculos',json('POST',{contato_id:$('selcontato').value,empresa_id:$('selempresa').value,funcao:$('cfuncao').value}));aviso('Vínculo salvo.',true);await atualizar()}catch(e){aviso(e.message)}}
+async function previa(){let f=$('arquivo').files[0];if(!f){aviso('Selecione um arquivo.');return}let fd=new FormData();fd.append('arquivo',f);try{let result=await api('/api/importar/previa',{method:'POST',body:fd});linhas=result.linhas;$('prevbox').classList.remove('hidden');let bad=linhas.filter(x=>['conflito','invalido'].includes(x.status)).length;$('resumo').textContent=linhas.length+' linhas · '+bad+' impedimentos';$('confirmar').disabled=bad>0;$('prevrows').innerHTML=linhas.map(r=>'<tr><td>'+r.linha+'</td><td>'+escapeHtml(r.codigo)+'</td><td>'+escapeHtml(r.nome)+'</td><td>'+escapeHtml(r.tipo)+'</td><td>'+escapeHtml(r.documento)+'</td><td>'+escapeHtml(r.status)+' — '+escapeHtml(r.detalhe)+'</td></tr>').join('');aviso(bad?'Corrija os impedimentos antes de importar.':'Prévia pronta.',!bad)}catch(e){aviso(e.message)}}
+async function confirmar(){try{let d=await api('/api/importar/confirmar',json('POST',{linhas}));$('prevbox').classList.add('hidden');aviso(d.importados+' empresas processadas.',true);await atualizar()}catch(e){aviso(e.message)}}
+
+let waState={status:'desconectado',conversations:[]},waChat=null,quoted=null;
+function toggleQr(){$('qrpanel').classList.toggle('hidden')}
+async function newGroup(){if(!window.desktopApi){aviso('Disponível somente no aplicativo.');return}const name=prompt('Nome do novo grupo:');if(!name)return;const numbers=prompt('Telefones dos participantes com DDI (ex.: 5567999999999), separados por vírgula:');if(!numbers)return;try{await window.desktopApi.createGroup({name,participants:numbers.split(',').map(x=>x.trim())});aviso('Solicitação de criação enviada; verifique a lista de grupos.',true)}catch(e){aviso(e.message)}}
+async function refreshPhotos(){try{await window.desktopApi.reloadPhotos();aviso('Fotos atualizadas.',true)}catch(e){aviso(e.message)}}
+async function reconnectWA(){try{await window.desktopApi.reconnect();aviso("Reconexão solicitada.",true)}catch(e){aviso(e.message)}}
+async function syncWA(){try{await window.desktopApi.syncContacts();aviso("Sincronização iniciada.",true);await atualizar()}catch(e){aviso(e.message)}}
+function waStartup(){if(!window.desktopApi){$('wastatus').textContent='Disponível somente no aplicativo desktop';return;}
+ window.desktopApi.onState(s=>{waState=s;renderWA()});
+ window.desktopApi.getState().then(s=>{if(s){waState=s;renderWA()}});}
+function renderWA(){
+ const conectado=waState.status==='conectado';
+ $('wastatus').textContent=conectado?'Conectado':'Desconectado';
+ $('wastatusWrap').className='status-pill '+(conectado?'status-connected':'status-disconnected');
+ $('waerror').textContent=waState.error||'';
+ $('syncstatus').textContent='Contatos do WhatsApp: '+(waState.contactsCount||0)+' · Sincronização: '+(waState.sync||'aguardando');
+ $('qrarea').innerHTML=waState.qr?'<img alt="QR Code WhatsApp" src="'+waState.qr+'">':'';
+ if(waState.qr && !$('qrpanel').dataset.seen){$('qrpanel').classList.remove('hidden');$('qrpanel').dataset.seen='1'}
+ if(conectado){$('qrpanel').classList.add('hidden');delete $('qrpanel').dataset.seen}
+ if(['desconectado','erro','reconectando'].includes(waState.status)){$('qrpanel').classList.remove('hidden')}
+ const filter=($('chatfilter').value||'').toLocaleLowerCase('pt-BR');
+ const chats=(waState.conversations||[]).filter(c=>(c.name||c.id).toLocaleLowerCase('pt-BR').includes(filter));
+ $('wachats').innerHTML=chats.map(c=>'<div class="item '+(c.id===waChat?'selected':'')+'" data-chat="'+escapeHtml(c.id)+'"><div class="chat-preview"><div class="chat-avatar">'+escapeHtml((c.name||c.id).slice(0,1).toUpperCase())+'</div><div style="min-width:0"><div class="chat-contact-name">'+escapeHtml(c.name||c.id)+'</div><div class="chat-preview-text">'+escapeHtml(c.messages?.at(-1)?.body||'Clique para abrir a conversa')+'</div></div></div></div>').join('')||'<div class="item"><small>Nenhuma conversa encontrada.</small></div>';
+ $('wachats').querySelectorAll('[data-chat]').forEach(el=>el.onclick=()=>{waChat=el.getAttribute('data-chat');quoted=null;renderWA()});
+ const chat=(waState.conversations||[]).find(c=>c.id===waChat);
+ $('wachattitle').textContent=chat?.name||'Selecione uma conversa';
+ $('chatcaption').textContent=chat?(chat.isGroup?'Grupo · ':'Contato · ')+chat.id.replace('@c.us','').replace('@g.us',''):'Mensagens e atendimento';
+ document.querySelector('.conversation-header .avatar').innerHTML=chat?.photo?'<img src="'+escapeHtml(chat.photo)+'" referrerpolicy="no-referrer" alt="">':'👤';
+ $('wamessages').innerHTML=chat?(chat.messages||[]).map((m,i)=>'<div class="item '+(m.fromMe?'outgoing':'')+'" data-msg="'+i+'">'+escapeHtml(m.body)+'</div>').join(''):'<div class="empty-chat"><div class="empty-icon">◉</div><h2>Comunicação Clientes</h2><p>Selecione uma conversa à esquerda para começar.</p></div>';
+ $('wamessages').querySelectorAll('[data-msg]').forEach(el=>el.ondblclick=()=>{const m=chat.messages[Number(el.getAttribute('data-msg'))];quoted=m?.id||null;$('wareply').textContent='Respondendo: '+(m?.body||'').slice(0,100);$('cancelreply').classList.remove('hidden');$('wamessage').focus()});
+}
+function cancelReply(){quoted=null;$('wareply').textContent='';$('cancelreply').classList.add('hidden')}
+async function sendWA(){if(!window.desktopApi||!waChat){aviso('Escolha uma conversa.');return}
+ try{await window.desktopApi.sendMessage({chatId:waChat,text:$('wamessage').value,quotedId:quoted});$('wamessage').value='';cancelReply();aviso('Mensagem enviada.',true)}catch(e){aviso(e.message)}}
+$('wamessage').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendWA()}});
+waStartup();
+tab('whatsapp');
+
+atualizar().then(pesquisar);
+</script></body></html>
