@@ -5,5 +5,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
  reconnect:()=>ipcRenderer.invoke('wa-reconnect'),
  syncContacts:()=>ipcRenderer.invoke('wa-sync'),
  sendMessage:info=>ipcRenderer.invoke('wa-send',info),
+ createGroup:info=>ipcRenderer.invoke('wa-create-group',info),
+ reloadPhotos:()=>ipcRenderer.invoke('wa-reload-photos'),
  onState:callback=>{const listener=(_event,state)=>callback(state);ipcRenderer.on('wa-state',listener);return ()=>ipcRenderer.removeListener('wa-state',listener);}
 });

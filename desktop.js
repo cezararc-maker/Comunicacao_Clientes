@@ -11,6 +11,14 @@ let restarting=false, initializing=false;
 const syncToken=crypto.randomBytes(32).toString('hex');
 let state = { status:'desconectado', qr:null, error:null, conversations:[], contactsCount:0, sync:'aguardando' };
 const conversations = new Map();
+const profileCache=new Map();
+async function profilePhoto(id){
+ if(profileCache.has(id))return profileCache.get(id);
+ try{const url=await client.getProfilePicUrl(id);const safe=typeof url==='string'&&url.startsWith('https://')?url:null;profileCache.set(id,safe);return safe;}
+ catch{return null}
+}
+async function hydratePhotos(chats){for(const c of chats){const chat=conversations.get(c.id);if(!chat)continue;chat.photo=await profilePhoto(c.id);update({});}}
+
 function update(patch){state={...state,...patch,conversations:[...conversations.values()].sort((a,b)=>b.timestamp-a.timestamp).slice(0,100)}; if(window && !window.isDestroyed()) window.webContents.send('wa-state', state);}
 function safeSender(event){return !!window && event.sender.id === window.webContents.id && event.sender.getURL().startsWith('http://127.0.0.1:8765/');}
 function startPython(){
@@ -30,7 +38,7 @@ async function awaitServer(){
 function storeMessage(msg){
  if(!msg || msg.from==='status@broadcast')return;
  const id=msg.fromMe?msg.to:msg.from;
- if(!id || id.endsWith('@g.us'))return;
+ if(!id || id==='status@broadcast')return;
  const chat=conversations.get(id)||{id,name:msg._data?.notifyName||id.split('@')[0],messages:[],timestamp:0};
  const entry={id:msg.id?._serialized||String(Date.now()),body:msg.body|| (msg.hasMedia?'[Mídia]':''),fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp)||Date.now()/1000};
  if(!chat.messages.some(m=>m.id===entry.id))chat.messages.push(entry);
@@ -41,6 +49,7 @@ async function syncContactsAndChats(){
  update({sync:'sincronizando',error:null});
  try{
   const contacts=await client.getContacts();
+  update({contactsCount:contacts.length,sync:'contatos recebidos; importando'});
   const sanitized=contacts.filter(c=>!c.isGroup&&!c.isMe&&c.id && c.id.server==='c.us' && /^\d{10,15}$/.test(c.id.user))
     .map(c=>({telefone:c.id.user,nome:String(c.name||c.pushname||c.shortName||'').trim()}));
   const unique=[...new Map(sanitized.map(c=>[c.telefone,c])).values()];
@@ -52,14 +61,15 @@ async function syncContactsAndChats(){
   const result=await response.json();
   update({contactsCount:unique.length,sync:'concluida',syncResult:result});
   const chats=await client.getChats();
-  for(const c of chats.filter(c=>!c.isGroup).slice(0,250)){
+  for(const c of chats.slice(0,400)){
    const chatId=c.id?._serialized;
    if(!chatId)continue;
    const existing=conversations.get(chatId)||{id:chatId,messages:[],timestamp:0};
-   const next={...existing,id:chatId,name:c.name||existing.name||c.id.user,timestamp:c.timestamp||existing.timestamp||0};
+   const next={...existing,id:chatId,name:c.name||existing.name||c.id.user,isGroup:!!c.isGroup,timestamp:c.timestamp||existing.timestamp||0};
    conversations.set(chatId,next);
   }
   update({});
+  hydratePhotos(chats.slice(0,100).map(c=>({id:c.id?._serialized})).filter(c=>c.id)).catch(console.error);
  }catch(e){update({sync:'erro',error:'Sincronização: '+e.message});}
 }
 async function resetClient(){
@@ -101,10 +111,21 @@ ipcMain.handle('wa-send',async(e,info)=>{
  if(!safeSender(e))throw new Error('Janela não autorizada');
  if(state.status!=='conectado')throw new Error('Conecte o WhatsApp primeiro');
  const chatId=String(info?.chatId||'');const text=String(info?.text||'').trim();
- if(!/^\d+@c\.us$/.test(chatId)||!text||text.length>10000)throw new Error('Conversa ou mensagem inválida');
+ if(!/^(\d+@c\.us|\d+(?:-\d+)?@g\.us)$/.test(chatId)||!text||text.length>10000)throw new Error('Conversa ou mensagem inválida');
  const options={};
  if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
  const sent=await client.sendMessage(chatId,text,options);storeMessage(sent);return true;
 });
+ipcMain.handle('wa-create-group',async(e,info)=>{
+ if(!safeSender(e))throw Error('Janela não autorizada');
+ if(state.status!=='conectado')throw Error('WhatsApp desconectado');
+ const name=String(info?.name||'').trim();
+ const participants=Array.isArray(info?.participants)?info.participants.map(x=>String(x).replace(/\D/g,'')) : [];
+ if(!name||name.length>100||participants.length<1||participants.length>100||participants.some(x=>!/^\d{10,15}$/.test(x)))throw Error('Informe o nome do grupo e ao menos um telefone com DDI.');
+ const result=await client.createGroup(name,participants.map(x=>x+'@c.us'));
+ await syncContactsAndChats();
+ return result;
+});
+ipcMain.handle('wa-reload-photos',async e=>{if(!safeSender(e))throw Error('Janela não autorizada');profileCache.clear();const ids=[...conversations.keys()].slice(0,150);await hydratePhotos(ids.map(id=>({id})));return true;});
 app.on('window-all-closed',()=>app.quit());
 app.on('before-quit',()=>{try{pythonProcess?.kill()}catch{}});
