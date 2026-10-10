@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.8.0 — aplicativo desktop (teste)
+# Comunicação Clientes v0.8.1 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -72,3 +72,6 @@ A faixa empresarial mostra a primeira empresa e o número de vínculos adicionai
 O escopo de teste inclui somente os dois contatos e o grupo chamado exatamente Teste app. A busca do grupo lê os metadados locais, sem buscar mensagens de outros grupos; nomes duplicados impedem selecionar automaticamente. Dados do grupo mostra membros, administradores e descrição. Administradores podem editar a descrição, adicionar telefone com DDI/DDD, promover/rebaixar ou remover outros membros, respeitando as permissões do WhatsApp. Remoção e alterações de administração exigem confirmação no aplicativo. Não são enviados convites privados automaticamente quando a privacidade impede adicionar alguém. Digitar @ apresenta a lista de membros para menção.
 
 A sincronização geral permanece desativada durante os testes. Quando for liberada mediante solicitação, o marco a preservar é 09/10/2026 às 01h de Cuiabá (05h UTC), definido em sync_scope.js. Mensagens anteriores não são armazenadas, e a abertura/reinicialização preserva o banco existente. A sincronização inicial consulta até 100 mensagens recentes por conversa; as novas mensagens recebidas são acrescentadas ao histórico local sem truncá-lo.
+
+
+Na v0.8.1, as faixas empresariais ajustam sua largura ao texto, com bordas completamente arredondadas e formato Código · Empresa / função. O balão reúne todos os vínculos do telefone do contato, inclusive registros equivalentes existentes, sem limitar a lista à primeira empresa.

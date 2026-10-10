@@ -1,6 +1,6 @@
 {
   "name": "comunicacao-clientes",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Desktop WhatsApp multiatendente - protótipo local",
   "main": "desktop.js",
