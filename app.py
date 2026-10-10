@@ -5,6 +5,7 @@ import io
 import csv
 import sqlite3
 import json
+import time
 from pathlib import Path
 from contextlib import contextmanager
 from flask import Flask, request, jsonify, send_from_directory
@@ -52,6 +53,7 @@ def init_db():
         CREATE INDEX IF NOT EXISTS wa_mensagens_conversa ON wa_mensagens(conversa_id,timestamp);
         CREATE TABLE IF NOT EXISTS contatos_excluidos (telefone TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS wa_midias (mensagem_id TEXT PRIMARY KEY, dados TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS wa_fixadas (mensagem_id TEXT PRIMARY KEY, conversa_id TEXT NOT NULL, expira REAL NOT NULL);
         """)
 
 def digits(s):
@@ -364,6 +366,27 @@ def contact_confirm():
                 db.execute('INSERT INTO contatos(nome,telefone) VALUES (?,?)', (row['nome'], row['telefone']))
                 new += 1
     return jsonify(ok=True, novos=new, preservados=len(rows)-new)
+
+@app.route('/api/mensagens/fixadas', methods=['GET', 'POST', 'DELETE'])
+def mensagens_fixadas():
+    with connect() as db:
+        if request.method == 'GET':
+            return jsonify([dict(row) for row in db.execute('SELECT mensagem_id,conversa_id,expira FROM wa_fixadas WHERE expira>? ORDER BY expira', (time.time(),))])
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or not isinstance(data.get('mensagem_id'), str) or not isinstance(data.get('conversa_id'), str):
+            return jsonify(erro='Mensagem inválida.'), 400
+        message_id, chat_id = data['mensagem_id'], data['conversa_id']
+        if request.method == 'DELETE':
+            db.execute('DELETE FROM wa_fixadas WHERE mensagem_id=? AND conversa_id=?', (message_id, chat_id))
+            return jsonify(ok=True)
+        duration = data.get('duracao')
+        if type(duration) is not int or duration not in (3600, 604800):
+            return jsonify(erro='Escolha 1 hora ou 7 dias.'), 400
+        if not db.execute('SELECT id FROM wa_mensagens WHERE id=? AND conversa_id=?', (message_id, chat_id)).fetchone():
+            return jsonify(erro='Aguarde a mensagem ser salva e tente novamente.'), 409
+        expires = time.time() + duration
+        db.execute('INSERT INTO wa_fixadas VALUES (?,?,?) ON CONFLICT(mensagem_id) DO UPDATE SET conversa_id=excluded.conversa_id,expira=excluded.expira', (message_id, chat_id, expires))
+        return jsonify(mensagem_id=message_id, conversa_id=chat_id, expira=expires)
 
 def history_authorized():
     token = os.environ.get('WA_SYNC_TOKEN', '')

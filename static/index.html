@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comunicação Clientes v0.8.3</title>
+<title>Comunicação Clientes v0.8.4</title>
 <style>
 :root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
 *{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
@@ -106,7 +106,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 <button class="rail-button" onclick="tab('empresas')" id="menu-empresas" title="Empresas" aria-label="Empresas">▦<span>Empresas</span></button>
 <button class="rail-button" onclick="tab('contatos')" id="menu-contatos" title="Contatos e vínculos" aria-label="Contatos"><img class="nav-icon contact-icon" src="/static/icons/contacts.webp" alt=""><span>Contatos</span></button>
 <button class="rail-button" onclick="tab('importar')" id="menu-importar" title="Importar Excel" aria-label="Importar Excel">⇩<span>Importar</span></button>
-</nav><div class="rail-footer" title="Versão 0.8.3">v0.8.3</div></aside>
+</nav><div class="rail-footer" title="Versão 0.8.4">v0.8.4</div></aside>
 <section class="workspace"><div id="feedback"></div>
 <div id="view-whatsapp" class="chat-layout">
 <div class="chat-sidebar"><div class="chat-list-header"><div><h2>Conversas</h2><small>Central de atendimento</small></div><div class="header-actions"><button class="icon-button settings-trigger" onclick="toggleSettings()" aria-haspopup="menu" aria-expanded="false" aria-label="Abrir configurações" title="Configurações">⚙</button><button class="icon-button new-chat-button" onclick="newGroup()" title="Criar grupo" aria-label="Criar grupo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
@@ -116,7 +116,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 <div class="chat-search-wrap"><input id="chatfilter" oninput="renderWA()" placeholder="⌕  Pesquisar conversas" aria-label="Pesquisar conversas"></div>
 <div id="wachats" class="chat-list"></div></div>
 <div class="conversation-panel no-chat"><div class="conversation-header"><div class="avatar">◉</div><div class="contact-heading"><h3><button id="wachattitle" class="contact-name" onclick="openDetails()" title="Ver informações">Selecione uma conversa</button></h3><small id="chatcaption">Mensagens e atendimento</small></div><button class="icon-button" onclick="openDocuments()" title="Enviar documentos" aria-label="Enviar documentos">⇧</button><button class="icon-button" onclick="toggleQr()" title="Conexão e configurações">⋮</button></div>
-<div id="wamessages" class="message-area"><div class="empty-chat"><div class="empty-icon">◉</div><h2>Comunicação Clientes</h2><p>Selecione uma conversa à esquerda para começar.</p></div></div>
+<div id="pinned-messages" class="pinned-messages hidden" aria-label="Demandas fixadas"></div><div id="wamessages" class="message-area"><div class="empty-chat"><div class="empty-icon">◉</div><h2>Comunicação Clientes</h2><p>Selecione uma conversa à esquerda para começar.</p></div></div>
 <button id="new-messages" class="new-messages hidden" onclick="newestMessages()">Novas mensagens ↓</button>
 <div class="composer"><div id="wareply" class="reply-banner"></div><div id="voice-status" class="voice-status hidden">Gravando <span id="voice-time">0:00</span><button onclick="stopVoice()">Parar e ouvir</button><button class="secondary" onclick="stopVoice(true)">Descartar</button></div><div class="composer-row"><div class="composer-tools"><button class="icon-button" data-media-action onclick="toggleAttachments()" aria-label="Anexar arquivo" title="Anexar arquivo"><span class="paperclip-icon"></span></button><button class="icon-button" data-media-action onclick="toggleStickers()" aria-label="Emojis e figurinhas" title="Emojis e figurinhas"><img src="/static/icons/sticker.svg" alt=""></button><div id="attachment-panel" class="attachment-panel hidden"><button onclick="chooseMedia('image')">Foto</button><button onclick="chooseMedia('video')">Vídeo</button><button onclick="chooseMedia('audio')">Áudio</button><button onclick="chooseMedia('document')">Documento, ZIP ou outro arquivo</button></div><div id="sticker-panel" class="attachment-panel hidden"><button onclick="toggleEmojis()" aria-label="Emojis">Emojis</button><button onclick="chooseMedia('sticker')">Selecionar figurinha</button><div id="emoji-panel" class="emoji-panel hidden"></div></div></div>
 <textarea id="wamessage" rows="1" placeholder="Digite uma mensagem" aria-label="Mensagem"></textarea><button id="record-audio" class="send-button" data-media-action onclick="recordVoice()" title="Gravar áudio" aria-label="Gravar áudio"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M9 21h6"/></svg></button><button id="send-text" class="send-button hidden" onclick="sendWA()" title="Enviar mensagem" aria-label="Enviar mensagem">➤</button></div>
@@ -154,7 +154,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 <div id="company-balloon" class="company-balloon hidden" role="tooltip"></div><div id="mention-picker" class="mention-picker hidden" aria-label="Mencionar membro"></div>
 
 <dialog id="group-confirm" class="document-dialog"><h2>Confirmar alteração do grupo</h2><p id="group-confirm-label"></p><button class="secondary" onclick="$('group-confirm').close()">Cancelar</button><button onclick="changeGroup('confirm')">Confirmar</button></dialog>
-<script src="/static/group_ui.js"></script><script src="/static/media_ui.js"></script>
+<script src="/static/group_ui.js"></script><script src="/static/pinned_messages.js"></script><script src="/static/media_ui.js"></script>
 <script>
 let empresas=[],contatos=[],linhas=[],cadastroRequest=0;
 const $=id=>document.getElementById(id);
@@ -241,7 +241,7 @@ async function sendWA(){if(!window.desktopApi||!waChat){aviso('Escolha uma conve
  try{await window.desktopApi.sendMessage({chatId,text:mentionWireText(text,chatId),quotedId:quoted,...(mentions.length?{mentions}:{})});finishOutgoing(id);mentionSelection.clear();cancelReply();}catch(e){finishOutgoing(id,e);aviso(e.message)}}
 $('wamessage').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendWA()}});
 $('wamessage').addEventListener('input',updateComposer);
-renderWA();waStartup();
+renderWA();waStartup();loadPins();
 tab('whatsapp');
 
 atualizar().then(pesquisar);
