@@ -55,7 +55,7 @@ Na v0.6.0, os testes de interface em navegador isolado verificaram prévias, env
 
 Na v0.6.1, conversas e anexos baixados são preservados no banco local `dados/comunicacao.db` e reaparecem ao abrir o aplicativo, antes da conexão WhatsApp. Atualizações não exigem apagar dados ou refazer a sincronização do histórico. A sessão QR continua em `%APPDATA%/comunicacao-clientes/wa-session`. Faça backup dessas duas pastas com o aplicativo fechado; não apague nem substitua o banco para atualizar. O corte de teste continua em 09/10/2026 às 01h (Cuiabá), com somente os dois contatos definidos.
 
-Foram corrigidos os identificadores e o tipo de arquivo usados para baixar mídias nas versões recentes do WhatsApp Web. O compositor possui clipe para fotos, vídeos, áudios e documentos/ZIP, e um adesivo para emojis e figurinhas; gravação permanece à direita. Os vínculos empresariais aparecem na lista de conversas. Mensagens enviadas mostram relógio, visto de envio, entrega e leitura; erros aparecem temporariamente. Fotos são verificadas automaticamente a cada minuto enquanto conectado, respeitando a disponibilidade e privacidade do WhatsApp.
+Foram corrigidos os identificadores e o tipo de arquivo usados para baixar mídias nas versões recentes do WhatsApp Web. O compositor possui clipe para fotos, vídeos, áudios e documentos/ZIP, e um adesivo para emojis e figurinhas; gravação permanece à direita. Os vínculos empresariais aparecem na lista de conversas. Mensagens enviadas mostram relógio, visto de envio, entrega e leitura; erros aparecem temporariamente. Fotos são verificadas automaticamente a cada cinco minutos enquanto conectado, respeitando a disponibilidade e privacidade do WhatsApp.
 
 
 Na v0.7.0, mídias são baixadas automaticamente ao abrir a conversa (duas por vez, cache local e tentativas automáticas limitadas). Imagens coladas com Ctrl+V abrem prévia antes do envio. Fotos e PDFs possuem visualizador que fecha clicando fora. Os áudios recentes observados na sessão de teste tinham confirmação de entrega; agora o player aparece automaticamente.
@@ -113,7 +113,7 @@ Captura inclui cabeçalho com foto/nome e caixa de texto, além do intervalo de 
 
 ### Fixações e envio rápido na v0.13.0
 Figurinhas e GIFs da lista são enviados diretamente ao clicar, sem segunda confirmação; arquivos escolhidos como figurinha/GIF também enviam após a seleção. Outros anexos mantêm a prévia. Envios simultâneos são bloqueados e falhas mostram aviso temporário.
-Fixações têm opções de 1 hora, 7 dias e 30 dias. A faixa e o balão da mensagem ficam amarelos como marca-texto. O contador atualiza a cada segundo em HH:MM:SS; para 30 dias mostra também a data/hora final e dias restantes, mudando para HH:MM:SS nas últimas 24 horas. A duração é persistida por migração aditiva, preservando fixações, mensagens e dados existentes.
+Fixações têm opções de 24 horas, 7 dias e 30 dias. A faixa e o balão da mensagem ficam amarelos como marca-texto. O contador atualiza a cada segundo em HH:MM:SS; para 30 dias mostra também a data/hora final e dias restantes, mudando para HH:MM:SS nas últimas 24 horas. A duração é persistida por migração aditiva, preservando fixações, mensagens e dados existentes.
 
 ### Ajustes na v0.13.0
 Capturas são salvas somente em PNG, com o mesmo nome-base anterior: `Conversa_<nome>_<AAAA-MM-DD>_<HH-MM>.png` (partes recebem `_001`, `_002` etc.). A prévia não tem botão Fechar; clicar fora a fecha e libera a captura. Foto, nome e caixa de texto permanecem incluídos.
@@ -122,5 +122,13 @@ A prévia de documentos PDF recebidos e de PDFs antes do envio abre ampliada ao 
 ### Conversas, seleção e notificações na v0.13.0
 O ícone expandir do kit aparece abaixo da hora no cartão. Marcar como não lida mantém o indicador até reabrir; Fixar conversa ordena os cartões fixados primeiro. Conectado, as ações usam markChatUnread/pinChat/unpinChat; offline, o estado local é preservado. Limites de fixação do WhatsApp são reportados.
 Menu da conversa → Selecionar mensagens permite selecionar até 50. Encaminhar exige escolher outra conversa sincronizada e confirmar, preservando o encaminhamento nativo de textos/mídias/cartões. Excluir para mim exige confirmação e usa delete(false,false), sem apagar para outros participantes. Operações parciais informam falhas. A marca de exclusão local persiste e impede que mensagens excluídas reapareçam em sincronizações; banco e cache são preservados.
-Menu da mensagem → Fixar abre janela com 1 hora, 24 horas, 7 dias e 30 dias. Cores e contadores existentes permanecem.
+Menu da mensagem → Fixar abre janela com 24 horas, 7 dias e 30 dias. Cores e contadores existentes permanecem.
 Notificações internas usam Web Animations API em notification_animation.js. dismissInternalNotification(element,{duration:380,fragments:5,displacement:20,manual:true,reducedMotion}) retorna cancel() e finished. Duração total manual entre 300–450 ms, 4–6 fragmentos, deslocamento 12–28 px; expansão até 105%, textos somem sem fragmentar, seguido de recolhimento suave do espaço. Automático: fade; movimento reduzido: fade curto sem fragmentos. showInternalNotification(text,{action,autoClose:5000,animation}) suporta múltiplas notificações e preserva a ação do conteúdo. Elementos decorativos não recebem cliques, usam cores do tema e são removidos ao terminar/cancelar. Notificações nativas e mensagens do histórico não recebem esse efeito.
+
+
+## v0.14.0 — revisão e limpeza
+
+Todas as janelas internas têm X no canto superior direito, com liberação da prévia ou captura ao fechar. A captura automática percorre visualmente da posição atual até o fim. Novas fixações permitem 24 horas, 7 dias ou 30 dias; fixações antigas continuam até expirar.
+
+Removidos o PNG antigo de mensagens, substituído pelo SVG, e estilos abandonados do efeito de vidro. Histórico idêntico não é gravado novamente a cada atualização de status. Fotos continuam automáticas, agora a cada cinco minutos; a atualização manual permanece disponível. Sincronização mantém os dois contatos e o grupo Teste app, com o mesmo corte de horário.
+Contadores de 7 e 30 dias mostram dias restantes até as últimas 24 horas, quando passam para HH:MM:SS. A opção de 30 dias mantém também a data final.

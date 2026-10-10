@@ -25,10 +25,11 @@ class PinTests(unittest.TestCase):
     server.DB = Path(folder)/'test.db'; server.init_db(); client = server.app.test_client()
     with server.connect() as db:
      db.execute("INSERT INTO wa_mensagens VALUES ('msg','123@lid',1791522001,'{}')")
-    payload = {'mensagem_id':'msg','conversa_id':'123@lid','duracao':3600}
+    payload = {'mensagem_id':'msg','conversa_id':'123@lid','duracao':86400}
     self.assertEqual(client.post('/api/mensagens/fixadas',json={**payload,'duracao':1}).status_code,400)
     self.assertEqual(client.post('/api/mensagens/fixadas',json={**payload,'conversa_id':'999@lid'}).status_code,409)
-    for duration in (3600,86400,604800,2592000):
+    self.assertEqual(client.post('/api/mensagens/fixadas',json={**payload,'duracao':3600}).status_code,400)
+    for duration in (86400,604800,2592000):
      start=time.time(); response=client.post('/api/mensagens/fixadas',json={**payload,'duracao':duration})
      self.assertEqual(response.status_code,200); self.assertEqual(response.json['duracao'],duration); self.assertAlmostEqual(response.json['expira']-start,duration,delta=2)
     server.init_db(); saved=client.get('/api/mensagens/fixadas').json; self.assertEqual(len(saved),1); self.assertEqual(saved[0]['duracao'],2592000)

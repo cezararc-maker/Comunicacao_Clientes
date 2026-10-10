@@ -383,8 +383,8 @@ def mensagens_fixadas():
             db.execute('DELETE FROM wa_fixadas WHERE mensagem_id=? AND conversa_id=?', (message_id, chat_id))
             return jsonify(ok=True)
         duration = data.get('duracao')
-        if type(duration) is not int or duration not in (3600, 86400, 604800, 2592000):
-            return jsonify(erro='Escolha 1 hora, 24 horas, 7 dias ou 30 dias.'), 400
+        if type(duration) is not int or duration not in (86400, 604800, 2592000):
+            return jsonify(erro='Escolha 24 horas, 7 dias ou 30 dias.'), 400
         if not db.execute('SELECT id FROM wa_mensagens WHERE id=? AND conversa_id=?', (message_id, chat_id)).fetchone():
             return jsonify(erro='Aguarde a mensagem ser salva e tente novamente.'), 409
         expires = time.time() + duration

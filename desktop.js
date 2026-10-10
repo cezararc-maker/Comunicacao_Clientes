@@ -169,7 +169,7 @@ async function startWhatsapp(){
   client.on('qr',async q=>{ try { update({status:'qr',qr:await QRCode.toDataURL(q,{margin:2,width:320}),error:null}); } catch(e){update({status:'erro',error:e.message})} });
   client.on('authenticated',()=>update({status:'autenticado',qr:null,error:null}));
   client.on('loading_screen',(percent,message)=>update({connectionLoading:Number(percent)||0,connectionMessage:'Carregando WhatsApp'}));
-  client.on('ready',async()=>{await installWebCompatibility(client);profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,60000);photoTimer.unref?.();});
+  client.on('ready',async()=>{await installWebCompatibility(client);profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,300000);photoTimer.unref?.();});
   client.on('message_ack',(msg,ack)=>{const id=serializedId(msg.id);if(!id)return;acknowledgments.set(id,Number(ack));if(acknowledgments.size>2000)acknowledgments.delete(acknowledgments.keys().next().value);for(const chat of conversations.values()){const m=chat.messages.find(m=>m.id===id);if(m)m.ack=Number(ack);}update({});});
   for(const event of ['group_join','group_leave','group_admin_changed','group_update'])client.on(event,notification=>{const id=String(notification.chatId||'');if(conversations.get(id)?.isGroup&&allowedChatIds.has(id))update({groupRevision:(state.groupRevision||0)+1});});
   client.on('message',storeMessage);client.on('message_create',storeMessage);
@@ -252,7 +252,7 @@ ipcMain.handle('wa-create-group',async(e,info)=>{
  const participants=Array.isArray(info?.participants)?info.participants.map(x=>String(x).replace(/\D/g,'')) : [];
  if(!name||name.length>100||participants.length<1||participants.length>100||participants.some(x=>!/^\d{10,15}$/.test(x)))throw Error('Informe o nome do grupo e ao menos um telefone com DDI.');
  const result=await client.createGroup(name,participants.map(x=>x+'@c.us'));
- await syncContactsAndChats();
+ if(name===TEST_GROUP)await syncContactsAndChats();
  return result;
 });
 ipcMain.handle('wa-reload-photos',async e=>{if(!safeSender(e))throw Error('Janela não autorizada');if(state.status!=='conectado')return {ok:false,message:'Aguarde o WhatsApp conectar para atualizar as fotos.'};profileCache.clear();photoDiagnostics={};await hydratePhotos([...conversations.values()]);for(const phone of PHONES)await profilePhoto(phone+'@c.us');return {ok:true};});
