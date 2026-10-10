@@ -28,7 +28,7 @@ class PinTests(unittest.TestCase):
     payload = {'mensagem_id':'msg','conversa_id':'123@lid','duracao':3600}
     self.assertEqual(client.post('/api/mensagens/fixadas',json={**payload,'duracao':1}).status_code,400)
     self.assertEqual(client.post('/api/mensagens/fixadas',json={**payload,'conversa_id':'999@lid'}).status_code,409)
-    for duration in (3600,604800,2592000):
+    for duration in (3600,86400,604800,2592000):
      start=time.time(); response=client.post('/api/mensagens/fixadas',json={**payload,'duracao':duration})
      self.assertEqual(response.status_code,200); self.assertEqual(response.json['duracao'],duration); self.assertAlmostEqual(response.json['expira']-start,duration,delta=2)
     server.init_db(); saved=client.get('/api/mensagens/fixadas').json; self.assertEqual(len(saved),1); self.assertEqual(saved[0]['duracao'],2592000)

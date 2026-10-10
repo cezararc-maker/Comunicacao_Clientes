@@ -52,6 +52,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS wa_mensagens (id TEXT PRIMARY KEY, conversa_id TEXT NOT NULL, timestamp REAL NOT NULL, dados TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS wa_mensagens_conversa ON wa_mensagens(conversa_id,timestamp);
         CREATE TABLE IF NOT EXISTS contatos_excluidos (telefone TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS wa_omitidas (mensagem_id TEXT PRIMARY KEY, conversa_id TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS wa_midias (mensagem_id TEXT PRIMARY KEY, dados TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS wa_fixadas (mensagem_id TEXT PRIMARY KEY, conversa_id TEXT NOT NULL, expira REAL NOT NULL, duracao INTEGER NOT NULL DEFAULT 0);
         """)
@@ -382,13 +383,27 @@ def mensagens_fixadas():
             db.execute('DELETE FROM wa_fixadas WHERE mensagem_id=? AND conversa_id=?', (message_id, chat_id))
             return jsonify(ok=True)
         duration = data.get('duracao')
-        if type(duration) is not int or duration not in (3600, 604800, 2592000):
-            return jsonify(erro='Escolha 1 hora, 7 dias ou 30 dias.'), 400
+        if type(duration) is not int or duration not in (3600, 86400, 604800, 2592000):
+            return jsonify(erro='Escolha 1 hora, 24 horas, 7 dias ou 30 dias.'), 400
         if not db.execute('SELECT id FROM wa_mensagens WHERE id=? AND conversa_id=?', (message_id, chat_id)).fetchone():
             return jsonify(erro='Aguarde a mensagem ser salva e tente novamente.'), 409
         expires = time.time() + duration
         db.execute('INSERT INTO wa_fixadas(mensagem_id,conversa_id,expira,duracao) VALUES (?,?,?,?) ON CONFLICT(mensagem_id) DO UPDATE SET conversa_id=excluded.conversa_id,expira=excluded.expira,duracao=excluded.duracao', (message_id, chat_id, expires, duration))
         return jsonify(mensagem_id=message_id, conversa_id=chat_id, expira=expires, duracao=duration)
+
+@app.route('/api/whatsapp/omitidas', methods=['GET','POST'])
+def whatsapp_omitted():
+    if not history_authorized():
+        return jsonify(erro='Não autorizado'), 403
+    with connect() as db:
+        if request.method=='GET':
+            return jsonify([row[0] for row in db.execute('SELECT mensagem_id FROM wa_omitidas')])
+        data=request.get_json(silent=True)
+        if not isinstance(data,dict) or not isinstance(data.get('mensagem_id'),str) or not isinstance(data.get('conversa_id'),str):
+            return jsonify(erro='Mensagem inválida'),400
+        db.execute('INSERT OR IGNORE INTO wa_omitidas VALUES (?,?)',(data['mensagem_id'],data['conversa_id']))
+        db.execute('DELETE FROM wa_fixadas WHERE mensagem_id=? AND conversa_id=?',(data['mensagem_id'],data['conversa_id']))
+        return jsonify(ok=True)
 
 def history_authorized():
     token = os.environ.get('WA_SYNC_TOKEN', '')
@@ -414,7 +429,7 @@ def whatsapp_history():
             conversations = []
             for row in db.execute('SELECT id,dados FROM wa_conversas'):
                 chat = json.loads(row['dados'])
-                chat['messages'] = [json.loads(m['dados']) for m in db.execute('SELECT dados FROM wa_mensagens WHERE conversa_id=? ORDER BY timestamp,id', (row['id'],))]
+                chat['messages'] = [json.loads(m['dados']) for m in db.execute('SELECT dados FROM wa_mensagens WHERE conversa_id=? AND id NOT IN (SELECT mensagem_id FROM wa_omitidas) ORDER BY timestamp,id', (row['id'],))]
                 conversations.append(chat)
             return jsonify(conversations)
         for chat in chats:

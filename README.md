@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.12.1 — aplicativo desktop (teste)
+# Comunicação Clientes v0.13.0 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -105,16 +105,22 @@ A cópia visual congelada inclui o cabeçalho com foto/nome, o histórico da con
 - Limitação: a API whatsapp-web.js não expõe favoritos de figurinhas/GIFs nem o histórico do teclado de emojis do celular. A biblioteca de recentes usa somente mensagens dentro do escopo atual; não lê favoritos do celular e não importa conversas antigas. Uma figurinha favorita só aparece quando enviada/recebida no período sincronizado.
 - Atualização mantém o banco, mídias, vínculos e sessão. Testes de envio usam cliente simulado e não disparam mensagens reais.
 
-### Links, notificações e captura na v0.12.1
+### Links, notificações e captura na v0.13.0
 Mensagens reconhecem links HTTP/HTTPS, www e `[rótulo](https://...)`; o clique abre o navegador padrão. O texto continua sendo texto e não executa HTML recebido. Protocolos diferentes de HTTP/HTTPS não abrem externamente.
 Avisos temporários surgem em balão com ×. Mensagens recebidas com o aplicativo em segundo plano também produzem um balão na área de trabalho, sem ativar a janela ou tomar o foco. Não há alerta para restauração de histórico, mensagens repetidas ou envios próprios. Após 5 segundos, somem com expansão e partículas de bolha; o fechamento manual usa fragmentos de vidro. A opção de movimento reduzido do Windows é respeitada. Confirmações rotineiras de envio continuam ocultas.
 O balão com todos os vínculos empresariais aparece após 1 segundo sem movimento em qualquer parte do cartão da conversa; movimento, rolagem ou saída ocultam o balão.
 Captura inclui cabeçalho com foto/nome e caixa de texto, além do intervalo de mensagens escolhido. PNGs continuam divididos em partes quando necessário. PDF imprime o conteúdo HTML em páginas A4 com texto selecionável, sem transformar as mensagens em imagem; imagens e fotos continuam sendo imagens. O cabeçalho aparece no início e a caixa de texto no final da captura. Capturas usam cópia congelada, sem mudar o histórico ou o texto em edição.
 
-### Fixações e envio rápido na v0.12.1
+### Fixações e envio rápido na v0.13.0
 Figurinhas e GIFs da lista são enviados diretamente ao clicar, sem segunda confirmação; arquivos escolhidos como figurinha/GIF também enviam após a seleção. Outros anexos mantêm a prévia. Envios simultâneos são bloqueados e falhas mostram aviso temporário.
 Fixações têm opções de 1 hora, 7 dias e 30 dias. A faixa e o balão da mensagem ficam amarelos como marca-texto. O contador atualiza a cada segundo em HH:MM:SS; para 30 dias mostra também a data/hora final e dias restantes, mudando para HH:MM:SS nas últimas 24 horas. A duração é persistida por migração aditiva, preservando fixações, mensagens e dados existentes.
 
-### Ajustes na v0.12.1
+### Ajustes na v0.13.0
 Capturas são salvas somente em PNG, com o mesmo nome-base anterior: `Conversa_<nome>_<AAAA-MM-DD>_<HH-MM>.png` (partes recebem `_001`, `_002` etc.). A prévia não tem botão Fechar; clicar fora a fecha e libera a captura. Foto, nome e caixa de texto permanecem incluídos.
 A prévia de documentos PDF recebidos e de PDFs antes do envio abre ampliada ao clicar, ocupando 94% da largura e 92% da altura da janela. Clicar fora fecha o visualizador ampliado; o download permanece opcional. Esta visualização de anexos PDF é independente da captura PNG.
+
+### Conversas, seleção e notificações na v0.13.0
+O ícone expandir do kit aparece abaixo da hora no cartão. Marcar como não lida mantém o indicador até reabrir; Fixar conversa ordena os cartões fixados primeiro. Conectado, as ações usam markChatUnread/pinChat/unpinChat; offline, o estado local é preservado. Limites de fixação do WhatsApp são reportados.
+Menu da conversa → Selecionar mensagens permite selecionar até 50. Encaminhar exige escolher outra conversa sincronizada e confirmar, preservando o encaminhamento nativo de textos/mídias/cartões. Excluir para mim exige confirmação e usa delete(false,false), sem apagar para outros participantes. Operações parciais informam falhas. A marca de exclusão local persiste e impede que mensagens excluídas reapareçam em sincronizações; banco e cache são preservados.
+Menu da mensagem → Fixar abre janela com 1 hora, 24 horas, 7 dias e 30 dias. Cores e contadores existentes permanecem.
+Notificações internas usam Web Animations API em notification_animation.js. dismissInternalNotification(element,{duration:380,fragments:5,displacement:20,manual:true,reducedMotion}) retorna cancel() e finished. Duração total manual entre 300–450 ms, 4–6 fragmentos, deslocamento 12–28 px; expansão até 105%, textos somem sem fragmentar, seguido de recolhimento suave do espaço. Automático: fade; movimento reduzido: fade curto sem fragmentos. showInternalNotification(text,{action,autoClose:5000,animation}) suporta múltiplas notificações e preserva a ação do conteúdo. Elementos decorativos não recebem cliques, usam cores do tema e são removidos ao terminar/cancelar. Notificações nativas e mensagens do histórico não recebem esse efeito.

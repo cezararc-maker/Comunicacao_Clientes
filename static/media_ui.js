@@ -63,7 +63,7 @@ function renderMessages(chat){
    if(['vcard','multi_vcard'].includes(m.type)){bubble.append(renderContactCards(m));}else if(m.body){const body=document.createElement('div');body.className='message-body';appendClickableText(body,messageDisplayText(m,chat));bubble.append(body);}
    const time=document.createElement('small');time.className='message-time';time.textContent=Number.isFinite(m.timestamp)?new Date(m.timestamp*1000).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';bubble.append(time);
    bubble.append(messagePinMenu(m,chat));
-   node.ondblclick=e=>{if(e.target.closest('button,audio,video,a,details'))return;quoted=m.id;renderReplyBanner();$('wamessage').focus();};
+   node.ondblclick=e=>{if(messageSelection)return;if(e.target.closest('button,audio,video,a,details'))return;quoted=m.id;renderReplyBanner();$('wamessage').focus();};
   }
   const timeNode=node.querySelector('.message-time');if(timeNode){let receipt=timeNode.querySelector('.receipt');if(receipt)receipt.remove();timeNode.insertAdjacentHTML('beforeend',receiptHtml(m));}
   if(area.children[rowIndex]!==node)area.insertBefore(node,area.children[rowIndex]||null);rowIndex++;

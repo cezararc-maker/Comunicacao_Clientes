@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('desktopApi',{
  markRead:chatId=>ipcRenderer.invoke('wa-mark-read',chatId),
  groupInfo:id=>ipcRenderer.invoke('wa-group-info',id),
  groupChange:info=>ipcRenderer.invoke('wa-group-change',info),
+ chatAction:info=>ipcRenderer.invoke('wa-chat-action',info),
+ batchMessages:info=>ipcRenderer.invoke('wa-batch-messages',info),
  getState:()=>ipcRenderer.invoke('wa-state'),
  reconnect:()=>ipcRenderer.invoke('wa-reconnect'),
  syncContacts:()=>ipcRenderer.invoke('wa-sync'),

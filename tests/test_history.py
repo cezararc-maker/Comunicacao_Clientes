@@ -10,7 +10,7 @@ class HistoryTests(unittest.TestCase):
     server.DB=Path(folder)/'test.db';server.init_db();client=server.app.test_client();headers={'X-Sync-Token':'test-history'}
     with server.connect() as db:
      db.execute("INSERT INTO contatos VALUES (1,'Ana','+5567996373431')");db.execute("INSERT INTO empresas VALUES (1,'001','Empresa','CPF','12345678901')");db.execute("INSERT INTO vinculos VALUES (1,1,'Financeiro')")
-    chat={'id':'123@lid','phone':'5567996373431','messages':[{'id':'first','timestamp':1791522010,'ack':1,'body':'Preservar'}]}
+    chat={'id':'123@lid','pinnedConversation':True,'markedUnread':True,'phone':'5567996373431','messages':[{'id':'first','timestamp':1791522010,'ack':1,'body':'Preservar'}]}
     self.assertEqual(client.post('/api/whatsapp/historico',json={'conversations':[chat]}).status_code,403)
     self.assertEqual(client.post('/api/whatsapp/historico',headers=headers,json={'conversations':[chat]}).status_code,200)
     chat['messages']=[{'id':'second','timestamp':1791522020,'ack':3}]
@@ -22,11 +22,17 @@ class HistoryTests(unittest.TestCase):
     self.assertEqual(client.post('/api/whatsapp/midia/first',headers=headers,json=media).status_code,200)
     server.init_db();client=server.app.test_client()
     rows=client.get('/api/whatsapp/historico',headers=headers).json
-    private=next(c for c in rows if c['id']=='123@lid');self.assertEqual([m['id'] for m in private['messages']],['first','second'])
+    private=next(c for c in rows if c['id']=='123@lid');self.assertTrue(private['pinnedConversation']);self.assertTrue(private['markedUnread']);self.assertEqual([m['id'] for m in private['messages']],['first','second'])
     self.assertEqual(next(c for c in rows if c.get('isGroup'))['messages'][0]['reply']['body'],'Mensagem original')
     self.assertEqual(private['messages'][1]['ack'],3)
     self.assertEqual(client.get('/api/whatsapp/midia/first',headers=headers).json,media)
+    self.assertEqual(client.post('/api/whatsapp/omitidas',json={'mensagem_id':'first','conversa_id':'123@lid'}).status_code,403)
+    self.assertEqual(client.post('/api/whatsapp/omitidas',headers=headers,json={'mensagem_id':'first','conversa_id':'123@lid'}).status_code,200)
+    server.init_db();rows=client.get('/api/whatsapp/historico',headers=headers).json
+    self.assertEqual([m['id'] for m in next(c for c in rows if c['id']=='123@lid')['messages']],['second'])
+    self.assertEqual(client.get('/api/whatsapp/midia/first',headers=headers).json,media)
     with server.connect() as db:
+     self.assertEqual(db.execute('SELECT COUNT(*) FROM wa_mensagens WHERE id=\'first\'').fetchone()[0],1)
      self.assertEqual(db.execute('SELECT funcao FROM vinculos').fetchone()[0],'Financeiro')
      self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
    finally:

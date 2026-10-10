@@ -15,6 +15,7 @@ const {TEST_GROUP,findTestGroup,registerGroupHandlers}=require('./group_support'
 const {createHistoryStore}=require('./history_store');
 const {orderedMessages,mediaLabel}=require('./media_messages');
 const {createDesktopNotifications}=require('./desktop_notifications');let desktopNotifications=null;
+const {registerBatchHandlers}=require('./batch_messages');const omittedMessages=new Set();
 const {registerMediaHandlers}=require('./media_ipc');
 const {registerCaptureHandlers}=require('./capture_conversation');
 let window, pythonProcess, client;
@@ -50,7 +51,7 @@ async function profilePhoto(id){
 }
 async function hydratePhotos(chats){for(const c of chats){const chat=conversations.get(c.id);if(!chat)continue;chat.photo=await profilePhoto(c.id);update({});}}
 
-function update(patch){state={...state,...patch,conversations:[...conversations.values()].sort((a,b)=>b.timestamp-a.timestamp).slice(0,100)}; if(window && !window.isDestroyed()) window.webContents.send('wa-state', state);if(historyReady)history.queue(state.conversations);}
+function update(patch){state={...state,...patch,conversations:[...conversations.values()].sort((a,b)=>Number(!!b.pinnedConversation)-Number(!!a.pinnedConversation)||b.timestamp-a.timestamp).slice(0,100)}; if(window && !window.isDestroyed()) window.webContents.send('wa-state', state);if(historyReady)history.queue(state.conversations);}
 function safeSender(event){return !!window && event.sender.id === window.webContents.id && event.sender.getURL().startsWith('http://127.0.0.1:8765/');}
 function startPython(){
  const args=['app.py'], options={cwd:__dirname,windowsHide:true,env:{...process.env,WA_SYNC_TOKEN:syncToken}};
@@ -74,7 +75,7 @@ function storeMessage(msg,historical=false,quotedId=null){
  const details=contactDirectory.get(id)||{};
  const existing=[...conversations.values()].find(c=>details.phone&&c.phone===details.phone);if(existing)id=existing.id;
  const chat=conversations.get(id)||{id,name:conversationName({id:{_serialized:id,user:id.split('@')[0]},isGroup:id.endsWith('@g.us'),name:msg._data?.notifyName},details,localNames.get(details.phone)),messages:[],timestamp:0};
- const messageId=serializedId(msg.id);if(!messageId)return;
+ const messageId=serializedId(msg.id);if(!messageId||omittedMessages.has(messageId))return;
  const entry={id:messageId,body:msg.body||'',fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp),type:msg.type||'chat',hasMedia:!!msg.hasMedia,mediaLabel:msg.hasMedia?mediaLabel(msg.type):'',filename:msg._data?.filename||'',ack:acknowledgments.get(messageId)??Number(msg.ack??0)};
  entry.vCards=Array.isArray(msg.vCards)?msg.vCards.slice(0,20):[];entry.isGif=!!msg.isGif;
  entry.author=msg.author||'';entry.authorName=msg._data?.notifyName||(msg.fromMe?'Você':chat.isGroup?(contactDirectory.get(msg.author)?.savedName||String(msg.author||'').split('@')[0]):chat.name);entry.reply=replyContext(msg,chat.messages,quotedId);
@@ -188,7 +189,7 @@ app.whenReady().then(async()=>{
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
  desktopNotifications=createDesktopNotifications({BrowserWindow,ipcMain,screen,getWindow:()=>window});
  registerCaptureHandlers({ipcMain,BrowserWindow,dialog,getWindow:()=>window,safeSender});
- try{await awaitServer();for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();startWhatsapp();}
+ try{await awaitServer();for(const id of await history.loadOmitted())omittedMessages.add(id);for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();startWhatsapp();}
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });
 ipcMain.handle('wa-state',e=>safeSender(e)?state:null);
@@ -274,8 +275,10 @@ async function refreshProfilePhotos(){
  try{for(const phone of PHONES){profileCache.delete(phone);const alias=[...contactDirectory].find(([id,c])=>c.phone===phone&&id.endsWith('@lid'))?.[0]||phone+'@c.us';const photo=await profilePhoto(alias);for(const chat of conversations.values())if(chat.phone===phone&&photo)chat.photo=photo;}update({photoRefreshAt:Date.now()});}catch(error){console.error('Atualização automática de fotos:',error.message);}finally{photoRefreshing=false;}
 }
 
-ipcMain.handle('wa-mark-read',(e,id)=>{if(!safeSender(e))throw Error('Janela não autorizada');readActiveChatId=id?String(id):null;const chat=conversations.get(String(id));if(chat){chat.unreadCount=0;update({});}return true;});
+ipcMain.handle('wa-mark-read',(e,id)=>{if(!safeSender(e))throw Error('Janela não autorizada');readActiveChatId=id?String(id):null;const chat=conversations.get(String(id));if(chat){chat.unreadCount=0;chat.markedUnread=false;update({});}return true;});
 ipcMain.handle('wa-save-contact',async(e,info)=>{if(!safeSender(e))throw Error('Janela não autorizada');if(state.status!=='conectado')throw Error('O contato foi salvo no aplicativo. Conecte o WhatsApp para sincronizá-lo com o celular.');const phone=String(info?.phone||'').replace(/\D/g,''),name=String(info?.name||'').trim();if(!/^\d{10,15}$/.test(phone)||!name||name.length>200)throw Error('Contato inválido');await client.saveOrEditAddressbookContact(phone,name,'',true);return {ok:true};});
 ipcMain.handle('window-action',(e,action)=>{if(!safeSender(e))throw Error('Janela não autorizada');if(action==='close')window.close();else if(action==='minimize')window.minimize();else if(action==='maximize'){if(window.isMaximized())window.unmaximize();else window.maximize();}return true;});
 
 registerGroupHandlers({ipcMain,safeSender,getClient:()=>client,getState:()=>state});
+
+registerBatchHandlers({ipcMain,safeSender,getClient:()=>client,getState:()=>state,getMessage:id=>mediaMessages.get(id),omitMessages:async(chat,id)=>{await history.omit(chat.id,id);omittedMessages.add(id);chat.messages=chat.messages.filter(m=>m.id!==id);update({});},changeChat:async(chat,action,value)=>{if(state.status==='conectado'){if(action==='unread')await client.markChatUnread(chat.id);else if(value){if(!await client.pinChat(chat.id))throw Error('O WhatsApp não permitiu fixar mais conversas.');}else await client.unpinChat(chat.id);}if(action==='pin')chat.pinnedConversation=value;else{chat.markedUnread=true;if(readActiveChatId===chat.id)readActiveChatId=null;}update({});await history.flush();return {ok:true};}});
