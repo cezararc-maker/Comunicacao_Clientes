@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -75,6 +75,7 @@ function storeMessage(msg,historical=false,quotedId=null){
  const chat=conversations.get(id)||{id,name:conversationName({id:{_serialized:id,user:id.split('@')[0]},isGroup:id.endsWith('@g.us'),name:msg._data?.notifyName},details,localNames.get(details.phone)),messages:[],timestamp:0};
  const messageId=serializedId(msg.id);if(!messageId)return;
  const entry={id:messageId,body:msg.body||'',fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp),type:msg.type||'chat',hasMedia:!!msg.hasMedia,mediaLabel:msg.hasMedia?mediaLabel(msg.type):'',filename:msg._data?.filename||'',ack:acknowledgments.get(messageId)??Number(msg.ack??0)};
+ entry.vCards=Array.isArray(msg.vCards)?msg.vCards.slice(0,20):[];entry.isGif=!!msg.isGif;
  entry.author=msg.author||'';entry.authorName=msg._data?.notifyName||(msg.fromMe?'Você':chat.isGroup?(contactDirectory.get(msg.author)?.savedName||String(msg.author||'').split('@')[0]):chat.name);entry.reply=replyContext(msg,chat.messages,quotedId);
  const previous=chat.messages.findIndex(m=>m.id===entry.id);if(previous<0){chat.messages.push(entry);if(!historical&&!entry.fromMe&&!(id===readActiveChatId&&window?.isFocused?.()))chat.unreadCount=(chat.unreadCount||0)+1;}else chat.messages[previous]={...chat.messages[previous],...entry};
  chat.messages=orderedMessages(chat.messages);
@@ -181,7 +182,7 @@ app.whenReady().then(async()=>{
   webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:false,preload:path.join(__dirname,'preload.js')}});
  window.on('focus',()=>{const chat=conversations.get(readActiveChatId);if(chat&&chat.unreadCount){chat.unreadCount=0;update({});}});
  window.on('maximize',()=>update({windowMaximized:true}));window.on('unmaximize',()=>update({windowMaximized:false}));
- window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+ window.webContents.setWindowOpenHandler(({url})=>{if(/^https:\/\/wa\.me\/[1-9]\d{9,14}$/.test(url))shell.openExternal(url);return {action:'deny'};});
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
  registerCaptureHandlers({ipcMain,BrowserWindow,dialog,getWindow:()=>window,safeSender});
  try{await awaitServer();for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();startWhatsapp();}

@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.9.0 — aplicativo desktop (teste)
+# Comunicação Clientes v0.10.0 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -96,3 +96,11 @@ A cópia visual congelada inclui apenas o histórico da conversa ativa, a partir
 **Limites reais:** PNGs são divididos em faixas consecutivas de até 6.000 pixels de altura ou 24 milhões de pixels por parte, com arredondamento consistente conforme a escala. O limite total é 120 milhões de pixels, 64 MB para a cópia visual e 500.000 pixels de altura em coordenadas CSS; acima disso, capture um intervalo menor. Partes múltiplas são salvas com numeração sequencial numa pasta escolhida, sem substituir arquivos com o mesmo nome. O PDF ajusta cada parte a uma página A4. Fontes e mídias aguardam estabilização por até 20 segundos; se uma mídia continuar indisponível, há aviso e a imagem mostra o conteúdo disponível. Áudios/vídeos são representados pelo player e pelo quadro disponível, não como mídia reproduzível no PNG. Ao mudar o tamanho da janela na captura manual, a captura termina na largura inicial e informa o ocorrido. Em falha depois de partes válidas, a prévia permite salvar essas partes e indica que o resultado está incompleto.
 
 **Validação:** testes de interface em navegador oculto cobrem os dois modos, início no meio do histórico, pausa manual, cancelamento, mensagens chegando durante a captura, texto em edição, temas, grupos e funções anteriores. Teste real com Electron verifica faixas PNG consecutivas e seus pixels nas escalas 100%, 125% e 200%, cortes no início/fim, PDF, cancelamento e conteúdo real da interface com dados fictícios. Nenhuma mensagem ou alteração de grupo real foi enviada nos testes. Testes Python usam bancos temporários. Não foi declarado teste de histórico virtualizado nem de mídias indisponíveis em rede real.
+### Conversas na v0.10.0
+- Botão flutuante para chegar ao fim, menus de mensagem fecham ao clicar fora e resposta em balão com ×. Desafixar permanece apenas no × da faixa de mensagens fixadas.
+- Lupa no cabeçalho procura palavras (inclusive sem acentos) e data local no histórico armazenado, sem buscar mensagens anteriores ao corte. Resultados levam à mensagem.
+- Arraste um arquivo por vez: limite de 16 MB, formatos de foto/vídeo/áudio e documentos PDF, Office, texto, CSV, vCard, compactados e dados. Tipos incompatíveis ou arquivos vazios/grandes são recusados. A prévia exige confirmação para enviar. PDF aparece na conversa e na prévia, mantendo download opcional.
+- Clipe → Compartilhar contato: selecione um cadastro e confirme o envio como cartão vCard nativo do WhatsApp. Cartões recebidos oferecem link para conversar e arquivo vCard para salvar/importar; o WhatsApp do destinatário apresenta as ações nativas.
+- Emojis recentes são recuperados das mensagens armazenadas. Figurinhas e GIFs recentes de conversas sincronizadas podem ser reutilizados; GIFs são enviados como vídeo MP4/WebM com sendVideoAsGif. Novos envios seguem a sessão do WhatsApp e aparecem no celular.
+- Limitação: a API whatsapp-web.js não expõe favoritos de figurinhas/GIFs nem o histórico do teclado de emojis do celular. A biblioteca de recentes usa somente mensagens dentro do escopo atual; não lê favoritos do celular e não importa conversas antigas. Uma figurinha favorita só aparece quando enviada/recebida no período sincronizado.
+- Atualização mantém o banco, mídias, vínculos e sessão. Testes de envio usam cliente simulado e não disparam mensagens reais.

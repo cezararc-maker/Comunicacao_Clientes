@@ -1,12 +1,13 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {validateMedia,mediaLabel,MAX_MEDIA}=require('./media_messages');
+const {dropKind,createVCard}=require('./conversation_tools');
 const {downloadMediaCompat,normalizeMessage,serializedId}=require('./whatsapp_compat');
 function registerMediaHandlers({ipcMain,dialog,getWindow,safeSender,getClient,getState,getMessage,storeMessage,readMedia=async()=>null,saveMedia=async()=>{}}){
  const selections=new Map(),downloads=new Map();
  function connected(e){if(!safeSender(e))throw Error('Janela não autorizada');if(getState().status!=='conectado')throw Error('Conecte o WhatsApp primeiro.');}
  function target(chatId){const id=String(chatId||'');if(!getState().conversations.some(c=>c.id===id))throw Error('Selecione uma conversa aberta.');return id;}
- const fileKinds={image:{title:'Selecionar foto',extensions:['jpg','jpeg','png','webp']},video:{title:'Selecionar vídeo',extensions:['mp4','webm']},document:{title:'Selecionar arquivo ou documento',extensions:['*']},audio:{title:'Selecionar áudio',extensions:['mp3','ogg','m4a','wav','webm','aac']},sticker:{title:'Selecionar figurinha',extensions:['webp','png','jpg','jpeg']}};
+ const fileKinds={gif:{title:'Selecionar GIF em vídeo',extensions:['mp4','webm']},image:{title:'Selecionar foto',extensions:['jpg','jpeg','png','webp']},video:{title:'Selecionar vídeo',extensions:['mp4','webm']},document:{title:'Selecionar arquivo ou documento',extensions:['*']},audio:{title:'Selecionar áudio',extensions:['mp3','ogg','m4a','wav','webm','aac']},sticker:{title:'Selecionar figurinha',extensions:['webp','png','jpg','jpeg']}};
  ipcMain.handle('wa-select-media',async(e,info)=>{
   connected(e);const kind=String(info?.kind||'');if(!fileKinds[kind])throw Error('Tipo de anexo inválido.');
   const selected=await dialog.showOpenDialog(getWindow(),{title:fileKinds[kind].title,properties:['openFile'],filters:[{name:mediaLabel(kind),extensions:fileKinds[kind].extensions}]});
@@ -19,20 +20,40 @@ function registerMediaHandlers({ipcMain,dialog,getWindow,safeSender,getClient,ge
   selections.set(selectionId,{file,kind,created:Date.now()});
   return {selectionId,kind,name:path.basename(file),mimetype:media.mimetype,preview:'data:'+media.mimetype+';base64,'+media.data};
  });
+ ipcMain.handle('wa-prepare-drop',async(e,info)=>{
+  connected(e);target(info?.chatId);const kind=dropKind(info?.media?.filename,info?.media?.mimetype);
+  const media=validateMedia(info.media,kind),selectionId=crypto.randomBytes(24).toString('hex');
+  selections.clear();selections.set(selectionId,{media,kind,created:Date.now()});
+  return {selectionId,kind,name:media.filename,mimetype:media.mimetype,preview:'data:'+media.mimetype+';base64,'+media.data};
+ });
+ ipcMain.handle('wa-send-contact',async(e,info)=>{
+  connected(e);const chatId=target(info?.chatId),card=createVCard(info?.contact);
+  const sent=await getClient().sendMessage(chatId,card,{parseVCards:true,...(info?.quotedId?{quotedMessageId:String(info.quotedId)}:{})});
+  if(!sent)throw Error('O WhatsApp não confirmou o cartão.');storeMessage(sent,false,info?.quotedId);return {ok:true};
+ });
+ ipcMain.handle('wa-reuse-media',async(e,info)=>{
+  connected(e);target(info?.chatId);const chat=getState().conversations.find(c=>c.id===info?.sourceChatId);
+  const entry=chat?.messages.find(m=>m.id===info.messageId&&(m.type==='sticker'||m.isGif));
+  if(!entry)throw Error('Escolha uma figurinha ou GIF das conversas sincronizadas.');
+  let downloaded=await readMedia(entry.id);if(!downloaded){const message=getMessage(entry.id)||await getClient().getMessageById(entry.id);normalizeMessage(message);downloaded=await downloadMediaCompat(getClient(),message,entry.id);}
+  const kind=entry.type==='sticker'?'sticker':'gif',media=validateMedia(downloaded,kind),selectionId=crypto.randomBytes(24).toString('hex');
+  selections.clear();selections.set(selectionId,{media,kind,created:Date.now()});
+  return {selectionId,kind,name:media.filename||mediaLabel(kind),mimetype:media.mimetype,preview:'data:'+media.mimetype+';base64,'+media.data};
+ });
  ipcMain.handle('wa-discard-media',e=>{if(!safeSender(e))throw Error('Janela não autorizada');selections.clear();return true;});
  ipcMain.handle('wa-send-media',async(e,info)=>{
   connected(e);const chatId=target(info?.chatId);let media,kind,selection;
   const {MessageMedia}=require('whatsapp-web.js');
   if(info?.selectionId){selection=selections.get(String(info.selectionId));if(!selection||Date.now()-selection.created>15*60*1000)throw Error('Selecione o arquivo novamente.');
-   const stat=fs.statSync(selection.file);if(!stat.isFile()||stat.size>MAX_MEDIA)throw Error('O arquivo mudou. Selecione novamente.');
-   kind=selection.kind;media=validateMedia(MessageMedia.fromFilePath(selection.file),kind);
+   const stat=selection.media?{isFile:()=>true,size:selection.media.bytes}:fs.statSync(selection.file);if(!stat.isFile()||stat.size>MAX_MEDIA)throw Error('O arquivo mudou. Selecione novamente.');
+   kind=selection.kind;media=validateMedia(selection.media||MessageMedia.fromFilePath(selection.file),kind);
   }else{
    if(!['voice','clipboard'].includes(info?.kind))throw Error('Selecione um anexo antes de enviar.');
    kind=info.kind;media=validateMedia(info.media,kind==='voice'?'audio':'image');if(kind==='voice'&&(media.bytes>8*1024*1024||!/^audio\/(webm|ogg)$/.test(media.mimetype)))throw Error('Gravação inválida ou acima de 8 MB.');
   }
   const caption=String(info?.caption||'').trim();if(caption.length>10000)throw Error('Legenda muito longa.');
-  const options={sendMediaAsSticker:kind==='sticker',sendAudioAsVoice:kind==='voice',sendMediaAsDocument:kind==='document'};
-  if(['image','video','clipboard'].includes(kind)&&caption)options.caption=caption;if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
+  const options={sendVideoAsGif:kind==='gif',sendMediaAsSticker:kind==='sticker',sendAudioAsVoice:kind==='voice',sendMediaAsDocument:kind==='document'};
+  if(['image','video','gif','clipboard'].includes(kind)&&caption)options.caption=caption;if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
   const sent=await getClient().sendMessage(chatId,new MessageMedia(media.mimetype,media.data,media.filename||null),options);
   if(!sent)throw Error('O WhatsApp não confirmou o envio.');storeMessage(sent,false,info?.quotedId);
   const sentId=serializedId(sent.id);
