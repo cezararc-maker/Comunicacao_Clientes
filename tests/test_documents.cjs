@@ -2,7 +2,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict');
 const handlers={},sent=[];let selection={canceled:false,filePaths:['C:/test/document.pdf']},confirmation={response:1},size=100,pickerCalls=0;
 const electron={app:{whenReady:()=>({then:()=>{}}),on:()=>{}},BrowserWindow:function(){},ipcMain:{handle:(name,fn)=>handlers[name]=fn},dialog:{showOpenDialog:async()=>{pickerCalls++;return selection},showMessageBox:async()=>confirmation}};
-const sandbox={require:name=>name==='./contact_names'?require('../contact_names'):name==='electron'?electron:name==='qrcode'?{}:name==='node:fs'?{statSync:()=>({isFile:()=>true,size})}:name==='whatsapp-web.js'?{MessageMedia:{fromFilePath:file=>({file})}}:require(name),process,console,__dirname:path.resolve(__dirname,'..'),recordSend:(...args)=>sent.push(args)};
+const sandbox={require:name=>name==='./contact_names'?require('../contact_names'):name==='./sync_scope'?require('../sync_scope'):name==='./profile_photos'?{resolvePhoto:async(client,ids)=>({image:await client.getProfilePicUrl(ids[0]),status:'external'})}:name==='electron'?electron:name==='qrcode'?{}:name==='node:fs'?{statSync:()=>({isFile:()=>true,size})}:name==='whatsapp-web.js'?{MessageMedia:{fromFilePath:file=>({file})}}:require(name),process,console,__dirname:path.resolve(__dirname,'..'),recordSend:(...args)=>sent.push(args)};
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../desktop.js'),'utf8')+`
 window={isDestroyed:()=>false,webContents:{id:1,send:()=>{}}};state.status='conectado';
@@ -22,7 +22,7 @@ const event={sender:{id:1,getURL:()=>'http://127.0.0.1:8765/'}},targets=['556798
  await assert.rejects(handlers['wa-send-documents'](event,info),/expirou/);
  const next=await handlers['wa-select-documents'](event);vm.runInContext("client.sendMessage=async()=>{throw Error('network')}",sandbox);
  const failure=await handlers['wa-send-documents'](event,{selectionId:next.selectionId,chatIds:targets});assert.equal(failure.sent,0);assert(failure.error);
- const photo=await handlers['wa-contact-photos'](event,['5567988888888']);assert.equal(photo['5567988888888'],'https://example.com/5567988888888@c.us.jpg');
+ const photo=await handlers['wa-contact-photos'](event,['5567996373431']);assert.equal(photo['5567996373431'],'https://example.com/5567996373431@c.us.jpg');
  await assert.rejects(handlers['wa-contact-photos'](event,['invalid']),/inválida/);
  vm.runInContext("state.status='desconectado'",sandbox);const offline=await handlers['wa-select-documents'](event);await assert.rejects(handlers['wa-send-documents'](event,{selectionId:offline.selectionId,chatIds:targets}),/Conecte/);
  console.log('Documents/photos: file-first selection, recipient validation, multiple targets, cancellation, limits, expired token, partial failure, original photo URLs and sender checks passed.');

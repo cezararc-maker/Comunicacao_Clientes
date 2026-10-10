@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.5.1 — aplicativo desktop (teste)
+# Comunicação Clientes v0.5.2 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -22,13 +22,23 @@ A primeira execução instala dependências. Clique em **WhatsApp / QR Code** pa
 - Ícones fornecidos pelo usuário adaptados à paleta verde na interface e tela inicial inspirada nos prints de referência.
 - QR Code de sessão única via whatsapp-web.js, indicação de estado, listagem inicial de conversas e mensagens novas, envio de texto e resposta citando com duplo clique.
 
+## Escopo temporário de teste
+
+A sincronização consulta diretamente somente **+5567996373431** e **+5567992780415**, conforme `sync_scope.js`, sem listar toda a agenda ou todas as conversas do WhatsApp. A interface de contatos usa esse mesmo filtro durante o teste; cadastros e vínculos dos demais contatos continuam intactos no banco.
+
+São exibidas somente mensagens com timestamp a partir de **09/10/2026 às 01:00 em America/Cuiaba (UTC−04:00; 05:00 UTC)**, incluindo mensagens novas de conversas que já existiam. A consulta é limitada às 100 mensagens mais recentes de cada contato; nenhuma mensagem anterior ao corte entra na conversa exibida. Eventos de outros contatos e grupos são ignorados durante este teste. Não há exclusão de mensagens no WhatsApp, no banco ou em arquivos existentes.
+
+A barra de progresso mede etapas concluídas: consulta dos contatos, identificação dos nomes, atualização dos cadastros, mensagens e fotos. Antes da conexão, os controles de sincronização e fotos ficam desabilitados; a sincronização começa automaticamente após o evento de conexão pronta. Solicitações simultâneas compartilham a mesma execução. Falhas aparecem como pendências, sem confundir 100% das etapas processadas com sucesso de todas as consultas.
+
+Fotos são consultadas pelos identificadores de telefone e LID. O aplicativo tenta carregar os bytes na sessão autenticada e por uma consulta direta alternativa, usando uma imagem incorporada para evitar depender da URL temporária no painel. Resultados sem foto não ficam bloqueados permanentemente no cache. O painel informa fotos carregadas ou indisponíveis. O funcionamento com as duas fotos reais ainda precisa ser validado no WhatsApp conectado.
+
 ## Não implementado
 
 Servidor multiusuário em LAN, login por funcionário, fila de atendimento, gravação de voz, chamadas, sincronização histórica completa, instalador EXE. **Não use em produção**. A integração QR e o envio real de documentos precisam ser validados em um computador Windows conectado ao WhatsApp.
 
 ## Testes em segundo plano
 
-Após instalar requirements.txt, execute `python -m unittest discover -s tests -v`, `node tests/test_contact_names.cjs` e `node tests/test_documents.cjs`. Os testes usam banco temporário e simulam a conexão WhatsApp; não acessam a sessão real nem os dados de produção.
+Após instalar requirements.txt, execute `python -m unittest discover -s tests -v`, `node tests/test_contact_names.cjs`, `node tests/test_documents.cjs`, `node tests/test_sync_scope.cjs` e `node tests/test_profile_photos.cjs`. Os testes usam banco temporário e simulam a conexão WhatsApp; não acessam a sessão real nem os dados de produção.
 
 ## Segurança
 

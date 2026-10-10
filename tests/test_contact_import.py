@@ -125,6 +125,15 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(again.json['nomes_atualizados'], 0)
         self.assertEqual(self.client.get('/api/contatos').json[0]['nome'], 'Nome salvo no celular')
 
+    def test_filtered_contacts_preserve_existing_data(self):
+        self.client.post('/api/contatos', json={'nome': 'Teste', 'telefone': '+5567996373431'})
+        rows = self.client.get('/api/contatos?telefones=5567996373431').json
+        self.assertEqual([r['nome'] for r in rows], ['Teste'])
+        self.assertEqual(len(self.client.get('/api/contatos').json), 2)
+        legacy = self.client.get('/api/contatos?telefones=5567999999999').json
+        self.assertEqual(legacy[0]['empresas'][0]['funcao'], 'Responsável')
+        self.assertEqual(self.client.get('/api/contatos?telefones=123').status_code, 400)
+
 
 if __name__ == '__main__':
     unittest.main()

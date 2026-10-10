@@ -7,17 +7,33 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const QRCode = require('qrcode');
 const {usableName,buildDirectory,conversationName}=require('./contact_names');
+const {PHONES,SINCE,phoneInScope,messageInScope}=require('./sync_scope');
+const {resolvePhoto}=require('./profile_photos');
 let window, pythonProcess, client;
-let restarting=false, initializing=false;
+let restarting=false, initializing=false,syncJob=null;
+const allowedChatIds=new Set(PHONES.map(p=>p+'@c.us'));
+let photoDiagnostics={};
 const syncToken=crypto.randomBytes(32).toString('hex');
-let state = { status:'desconectado', qr:null, error:null, conversations:[], contactsCount:0, sync:'aguardando' };
+let state = { status:'desconectado', qr:null, error:null, conversations:[], contactsCount:0, sync:'aguardando',syncProgress:{running:false,completed:0,total:9,percent:0,label:'Aguardando conexão'},testScope:{phones:PHONES,since:SINCE},photos:{} };
 const conversations = new Map();
 let contactDirectory=new Map(),localNames=new Map();
-const profileCache=new Map();
+const profileCache=new Map(),profileRequests=new Map();
 async function profilePhoto(id){
- if(profileCache.has(id))return profileCache.get(id);
- try{const url=await client.getProfilePicUrl(id);const safe=typeof url==='string'&&url.startsWith('https://')?url:null;profileCache.set(id,safe);return safe;}
- catch{return null}
+ const phone=contactDirectory.get(id)?.phone||id.split('@')[0];
+ if(!phoneInScope(phone)&&!allowedChatIds.has(id))return null;
+ const cached=profileCache.get(phone);
+ if(cached&&Date.now()-cached.time<5*60*1000)return cached.image;
+ if(profileRequests.has(phone))return profileRequests.get(phone);
+ const activeClient=client;
+ const job=(async()=>{
+  const aliases=[...contactDirectory].filter(([key,c])=>c.phone===phone).map(([key])=>key);
+  const result=await resolvePhoto(activeClient,[id,phone+'@c.us',...aliases]);
+  photoDiagnostics[phone]=result.status;update({photos:{...photoDiagnostics}});
+  if(result.image)profileCache.set(phone,{image:result.image,time:Date.now()});
+  return result.image;
+ })();
+ profileRequests.set(phone,job);
+ try{return await job;}finally{if(profileRequests.get(phone)===job)profileRequests.delete(phone);}
 }
 async function hydratePhotos(chats){for(const c of chats){const chat=conversations.get(c.id);if(!chat)continue;chat.photo=await profilePhoto(c.id);update({});}}
 
@@ -38,16 +54,16 @@ async function awaitServer(){
  throw new Error('Servidor de cadastros não iniciou. Verifique Python e as dependências.');
 }
 function storeMessage(msg){
- if(!msg || msg.from==='status@broadcast')return;
+ if(!messageInScope(msg,allowedChatIds))return;
  const id=msg.fromMe?msg.to:msg.from;
  if(!id || id==='status@broadcast')return;
  const details=contactDirectory.get(id)||{};
  const chat=conversations.get(id)||{id,name:conversationName({id:{_serialized:id,user:id.split('@')[0]},isGroup:id.endsWith('@g.us'),name:msg._data?.notifyName},details,localNames.get(details.phone)),messages:[],timestamp:0};
- const entry={id:msg.id?._serialized||String(Date.now()),body:msg.body|| (msg.hasMedia?'[Mídia]':''),fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp)||Date.now()/1000};
+ const entry={id:msg.id?._serialized||String(Date.now()),body:msg.body|| (msg.hasMedia?'[Mídia]':''),fromMe:!!msg.fromMe,timestamp:Number(msg.timestamp)};
  if(!chat.messages.some(m=>m.id===entry.id))chat.messages.push(entry);
  chat.messages=chat.messages.slice(-100);
  chat.timestamp=Math.max(chat.timestamp,entry.timestamp);conversations.set(id,chat);update({});
- if(chat.photo===undefined)profilePhoto(id).then(photo=>{chat.photo=photo;update({});}).catch(()=>{});
+ if(chat.photo===undefined&&!state.syncProgress?.running)profilePhoto(id).then(photo=>{chat.photo=photo;update({});}).catch(()=>{});
  if(!contactDirectory.has(id)&&!id.endsWith('@g.us')&&typeof client?.getContactById==='function'){
   client.getContactById(id).then(async contact=>{
    const resolved=await buildDirectory(client,[contact],[]),details=resolved.get(id);
@@ -55,43 +71,60 @@ function storeMessage(msg){
   }).catch(()=>{});
  }
 }
-async function syncContactsAndChats(){
- update({sync:'sincronizando',error:null});
- const errors=[];
- let contacts=[];
- let chats=[];
- try{contacts=await client.getContacts();update({contactsCount:contacts.length,sync:'importando contatos'});}
- catch(e){errors.push('Contatos: '+e.message);}
- try{chats=await client.getChats();}catch(e){errors.push('Conversas: '+e.message);}
- contactDirectory=await buildDirectory(client,contacts,chats.slice(0,400));
+function syncContactsAndChats(){
+ if(syncJob)return syncJob;
+ syncJob=performScopedSync().finally(()=>{syncJob=null});return syncJob;
+}
+async function performScopedSync(){
+ const total=PHONES.length*3+3;let completed=0;
+ const progress=label=>update({syncProgress:{running:true,completed,total,percent:Math.round(completed/total*100),label}});
+ const step=label=>{completed++;progress(label)};
+ update({sync:'sincronizando',error:null,photos:{},contactsCount:0});photoDiagnostics={};progress('Consultando os dois contatos de teste');
+ const errors=[],contacts=[],chats=[],targets=[];
  try{
-  const unique=[...new Map([...contactDirectory.values()].filter(c=>/^\d{10,15}$/.test(c.phone)).map(c=>[c.phone,{telefone:c.phone,nome:c.savedName||c.publicName||''}])).values()];
-  if(unique.length){
-   const response=await fetch('http://127.0.0.1:8765/api/whatsapp/sync',{
-    method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},
-    body:JSON.stringify({contatos:unique})
-   });
-   if(!response.ok)throw Error('Servidor local retornou HTTP '+response.status);
-   const result=await response.json();
-   update({contactsCount:unique.length,syncResult:result});
+  for(const phone of PHONES){
+   let id=phone+'@c.us';
+   try{const number=await client.getNumberId(phone);if(!number)throw Error('Número indisponível no WhatsApp');id=number._serialized;allowedChatIds.add(id);
+    const contact=await client.getContactById(id);contacts.push(contact);const target={phone,id,contact,chat:null};targets.push(target);
+    try{const chat=await client.getChatById(id);if(chat){chats.push(chat);target.chat=chat;allowedChatIds.add(chat.id._serialized);}}
+    catch(error){errors.push('Conversa '+phone);console.error('Conversa de teste:',phone,error.message);const chat={id:{_serialized:id,user:phone},name:contact.name,isGroup:false,fetchMessages:async()=>[]};chats.push(chat);target.chat=chat;}
+   }catch(error){errors.push('Contato '+phone);console.error('Contato de teste:',phone,error.message);}
+   step('Contatos consultados: '+contacts.length+' de '+PHONES.length);
   }
-  const localResponse=await fetch('http://127.0.0.1:8765/api/contatos');
-  if(!localResponse.ok)throw Error('Falha ao consultar nomes cadastrados');
-  localNames=new Map((await localResponse.json()).map(c=>{let phone=String(c.telefone).replace(/\D/g,'');if(!String(c.telefone).startsWith('+')&&(phone.length===10||phone.length===11))phone='55'+phone;return [phone,usableName(c.nome)];}));
- }catch(e){errors.push('Importação: '+e.message);}
- try{
-  for(const c of chats.slice(0,400)){
-   const id=c.id?._serialized;
-   if(!id)continue;
-   const old=conversations.get(id)||{id,messages:[],timestamp:0};
-   const details=contactDirectory.get(id)||{};
-   conversations.set(id,{...old,id,name:conversationName(c,details,localNames.get(details.phone),old.name),phone:details.phone,isGroup:!!c.isGroup,timestamp:c.timestamp||old.timestamp||0});
+  contactDirectory=await buildDirectory(client,contacts,chats);
+  for(const target of targets){const details={...(contactDirectory.get(target.id)||contactDirectory.get(target.contact.id?._serialized)||{}),phone:target.phone};for(const alias of [target.id,target.contact.id?._serialized,target.chat?.id?._serialized,target.phone+'@c.us'].filter(Boolean)){contactDirectory.set(alias,details);allowedChatIds.add(alias);}}
+  if(typeof client.getContactLidAndPhone==='function'){
+   try{for(const pair of await client.getContactLidAndPhone([...allowedChatIds])){
+    if(pair.lid&&pair.pn&&allowedChatIds.has(pair.pn)){allowedChatIds.add(pair.lid);const details=contactDirectory.get(pair.pn);if(details)contactDirectory.set(pair.lid,details);}
+   }}catch(error){console.error('Identificadores de teste:',error.message);}
   }
-  update({});
-  hydratePhotos([...conversations.values()].sort((a,b)=>b.timestamp-a.timestamp).slice(0,100)).catch(e=>console.error('Fotos:',e.message));
- }catch(e){errors.push('Conversas: '+e.message);}
- if(errors.length)console.error('Detalhes da sincronização:',errors.join(' | '));
- update({sync:errors.length?'parcial':'concluida',error:errors.length?'Alguns contatos ou conversas não puderam ser carregados. Clique em Sincronizar para tentar novamente.':null});
+  step('Nomes dos contatos identificados');
+  const unique=[...new Map([...contactDirectory.values()].filter(c=>phoneInScope(c.phone)).map(c=>[c.phone,{telefone:c.phone,nome:c.savedName||c.publicName||''}])).values()];
+  if(unique.length){const response=await fetch('http://127.0.0.1:8765/api/whatsapp/sync',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({contatos:unique})});if(!response.ok)throw Error('Falha ao salvar contatos');update({contactsCount:unique.length,syncResult:await response.json()});}
+  const response=await fetch('http://127.0.0.1:8765/api/contatos?telefones='+PHONES.join(','));if(!response.ok)throw Error('Falha ao consultar os cadastros');
+  localNames=new Map((await response.json()).map(c=>{let phone=String(c.telefone).replace(/\D/g,'');if(!String(c.telefone).startsWith('+')&&(phone.length===10||phone.length===11))phone='55'+phone;return [phone,usableName(c.nome)];}));
+  step('Cadastros de teste atualizados');
+  for(let i=0;i<PHONES.length;i++){
+   const chat=targets.find(t=>t.phone===PHONES[i])?.chat;
+   if(chat){
+    const id=chat.id._serialized,details=contactDirectory.get(id)||{};
+    const old=conversations.get(id)||{messages:[],timestamp:0};
+    conversations.set(id,{...old,id,name:conversationName(chat,details,localNames.get(details.phone),old.name),phone:details.phone,isGroup:false,messages:old.messages.filter(m=>m.timestamp>=SINCE),timestamp:old.timestamp});
+    try{if(!chat.lastMessage||Number(chat.lastMessage.timestamp)>=SINCE){const messages=await chat.fetchMessages({limit:100});for(const msg of messages)storeMessage(msg);}}
+    catch(error){errors.push('Mensagens '+(details.phone||id));console.error('Mensagens de teste:',error.message);}
+   }
+   step('Mensagens recentes: '+(i+1)+' de '+PHONES.length+' contatos');
+  }
+  for(let i=0;i<PHONES.length;i++){
+   const phone=PHONES[i],chat=[...conversations.values()].find(c=>c.phone===phone)||chats.find(c=>c.id.user===phone);
+   const image=await profilePhoto(chat?.id?._serialized||chat?.id||phone+'@c.us');
+   for(const c of conversations.values()){if(c.phone===phone)c.photo=image;}
+   step('Fotos consultadas: '+(i+1)+' de '+PHONES.length);
+  }
+  step('Sincronização finalizada');
+  update({sync:errors.length?'parcial':'concluida',error:errors.length?'Não foi possível carregar: '+errors.join(', ')+'. Tente sincronizar novamente.':null,syncProgress:{running:false,completed,total,percent:100,label:errors.length?'Concluída com pendências':'Sincronização concluída'}});
+  return {ok:!errors.length,message:errors.length?'Sincronização concluída com pendências.':'Dois contatos de teste sincronizados.'};
+ }catch(error){console.error('Sincronização de teste:',error.message);update({sync:'parcial',error:'A sincronização foi interrompida. Verifique a conexão e tente novamente.',syncProgress:{running:false,completed,total,percent:Math.round(completed/total*100),label:'Sincronização interrompida'}});return {ok:false,message:'A sincronização foi interrompida. Tente novamente.'};}
 }
 async function resetClient(){
  if(initializing||restarting)return;
@@ -108,7 +141,8 @@ async function startWhatsapp(){
   client=new Client({authStrategy:new LocalAuth({dataPath:path.join(app.getPath('userData'),'wa-session')}),puppeteer:{headless:true,args:['--no-sandbox','--disable-setuid-sandbox']}});
   client.on('qr',async q=>{ try { update({status:'qr',qr:await QRCode.toDataURL(q,{margin:2,width:320}),error:null}); } catch(e){update({status:'erro',error:e.message})} });
   client.on('authenticated',()=>update({status:'autenticado',qr:null,error:null}));
-  client.on('ready',async()=>{update({status:'conectado',qr:null,error:null});await syncContactsAndChats();});
+  client.on('loading_screen',(percent,message)=>update({connectionLoading:Number(percent)||0,connectionMessage:'Carregando WhatsApp'}));
+  client.on('ready',async()=>{profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();});
   client.on('message',storeMessage);client.on('message_create',storeMessage);
   client.on('disconnected',reason=>update({status:'desconectado',qr:null,error:'Sessão desconectada: '+String(reason)}));
   client.on('auth_failure',msg=>update({status:'erro',error:'Falha de autenticação: '+msg,qr:null}));
@@ -126,8 +160,8 @@ app.whenReady().then(async()=>{
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });
 ipcMain.handle('wa-state',e=>safeSender(e)?state:null);
-ipcMain.handle('wa-reconnect',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');await resetClient();return true});
-ipcMain.handle('wa-sync',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(state.status!=='conectado')throw new Error('WhatsApp não conectado');await syncContactsAndChats();return true});
+ipcMain.handle('wa-reconnect',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(syncJob)return {ok:false,message:'Aguarde a sincronização terminar antes de reconectar.'};await resetClient();return {ok:true}});
+ipcMain.handle('wa-sync',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(state.status!=='conectado')return {ok:false,message:'Aguarde o WhatsApp conectar. Se houver QR Code, escaneie-o primeiro.'};return await syncContactsAndChats();});
 ipcMain.handle('wa-send',async(e,info)=>{
  if(!safeSender(e))throw new Error('Janela não autorizada');
  if(state.status!=='conectado')throw new Error('Conecte o WhatsApp primeiro');
@@ -187,15 +221,15 @@ ipcMain.handle('wa-create-group',async(e,info)=>{
  await syncContactsAndChats();
  return result;
 });
-ipcMain.handle('wa-reload-photos',async e=>{if(!safeSender(e))throw Error('Janela não autorizada');profileCache.clear();const ids=[...conversations.keys()].slice(0,150);await hydratePhotos(ids.map(id=>({id})));return true;});
+ipcMain.handle('wa-reload-photos',async e=>{if(!safeSender(e))throw Error('Janela não autorizada');if(state.status!=='conectado')return {ok:false,message:'Aguarde o WhatsApp conectar para atualizar as fotos.'};profileCache.clear();photoDiagnostics={};await hydratePhotos([...conversations.values()]);for(const phone of PHONES)await profilePhoto(phone+'@c.us');return {ok:true};});
 ipcMain.handle('wa-contact-photos',async(e,phones)=>{
  if(!safeSender(e))throw Error('Janela não autorizada');
- if(state.status!=='conectado')return {};
+ if(state.status!=='conectado'||state.syncProgress?.running)return {};
  if(!Array.isArray(phones)||phones.length>30||phones.some(p=>!/^\d{10,15}$/.test(String(p))))throw Error('Lista de contatos inválida');
  const result={};
  for(let i=0;i<phones.length;i+=5){await Promise.all(phones.slice(i,i+5).map(async phone=>{
   const alias=[...contactDirectory].find(([id,c])=>c.phone===phone&&id.endsWith('@lid'))?.[0]||phone+'@c.us';
-  result[phone]=await profilePhoto(alias);
+  if(phoneInScope(phone))result[phone]=await profilePhoto(alias);
  }));}
  return result;
 });

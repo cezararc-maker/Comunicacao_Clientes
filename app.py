@@ -98,8 +98,28 @@ def criar_empresa():
 
 @app.get("/api/contatos")
 def contatos():
+    selected = request.args.get('telefones')
+    candidates = None
+    if selected is not None:
+        phones = selected.split(',')
+        if not 1 <= len(phones) <= 100:
+            return jsonify(erro='Selecione de 1 a 100 telefones.'), 400
+        candidates = set()
+        try:
+            for value in phones:
+                phone = phone_key('+' + digits(value))
+                candidates.update((phone, '+' + phone))
+                if phone.startswith('55') and len(phone) in (12, 13):
+                    candidates.add(phone[2:])
+        except ValueError as exc:
+            return jsonify(erro=str(exc)), 400
     with connect() as db:
-        rows = [dict(r) for r in db.execute("SELECT * FROM contatos ORDER BY nome")]
+        if candidates is None:
+            query, args = 'SELECT * FROM contatos ORDER BY nome', ()
+        else:
+            query = 'SELECT * FROM contatos WHERE telefone IN (' + ','.join('?' for _ in candidates) + ') ORDER BY nome'
+            args = tuple(candidates)
+        rows = [dict(r) for r in db.execute(query, args)]
         for row in rows:
             row["empresas"] = [dict(r) for r in db.execute("""
                 SELECT e.id,e.codigo,e.nome,e.tipo,e.documento,v.funcao
