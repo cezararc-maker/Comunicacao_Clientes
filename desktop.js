@@ -80,12 +80,13 @@ function storeMessage(msg,historical=false,quotedId=null){
  entry.vCards=Array.isArray(msg.vCards)?msg.vCards.slice(0,20):[];entry.isGif=!!msg.isGif;
  entry.author=msg.author||'';entry.authorName=msg._data?.notifyName||(msg.fromMe?'Você':chat.isGroup?(contactDirectory.get(msg.author)?.savedName||String(msg.author||'').split('@')[0]):chat.name);entry.reply=replyContext(msg,chat.messages,quotedId);
  const previous=chat.messages.findIndex(m=>m.id===entry.id);if(previous<0){chat.messages.push(entry);if(!historical&&!entry.fromMe&&!(id===readActiveChatId&&window?.isFocused?.()))chat.unreadCount=(chat.unreadCount||0)+1;}else chat.messages[previous]={...chat.messages[previous],...entry};
- if(previous<0&&!historical&&!entry.fromMe&&window&&!window.isFocused?.())desktopNotifications?.show(chat.name,entry.hasMedia?entry.mediaLabel:['vcard','multi_vcard'].includes(entry.type)?'Cartão de contato':entry.body).catch(()=>{});
+
  chat.messages=orderedMessages(chat.messages);
  if(msg.hasMedia)mediaMessages.set(entry.id,msg);
  const retained=new Set([...conversations.values()].flatMap(c=>c.messages.map(m=>m.id)).concat(chat.messages.map(m=>m.id)));
  for(const key of mediaMessages.keys())if(!retained.has(key))mediaMessages.delete(key);
  chat.timestamp=Math.max(chat.timestamp,entry.timestamp);conversations.set(id,chat);update({});
+ if(previous<0&&!historical&&!entry.fromMe&&window&&!window.isDestroyed()){const target={chatId:id,messageId:entry.id,title:chat.name,text:entry.hasMedia?entry.mediaLabel:['vcard','multi_vcard'].includes(entry.type)?'Cartão de contato':entry.body};if(window.isFocused?.())window.webContents.send('wa-incoming-message',target);else desktopNotifications?.show(target.title,target.text,target).catch(()=>{});}
  if(chat.photo===undefined&&!state.syncProgress?.running)profilePhoto(id).then(photo=>{chat.photo=photo;update({});}).catch(()=>{});
  if(!contactDirectory.has(id)&&!id.endsWith('@g.us')&&typeof client?.getContactById==='function'){
   client.getContactById(id).then(async contact=>{
@@ -187,7 +188,7 @@ app.whenReady().then(async()=>{
  window.on('maximize',()=>update({windowMaximized:true}));window.on('unmaximize',()=>update({windowMaximized:false}));
  window.webContents.setWindowOpenHandler(({url})=>{try{const parsed=new URL(url);if(['http:','https:'].includes(parsed.protocol)&&!parsed.username&&!parsed.password)shell.openExternal(parsed.href);}catch{}return {action:'deny'};});
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
- desktopNotifications=createDesktopNotifications({BrowserWindow,ipcMain,screen,getWindow:()=>window});
+ desktopNotifications=createDesktopNotifications({BrowserWindow,ipcMain,screen,getWindow:()=>window,onOpen:target=>{const chat=conversations.get(target.chatId);if(!window||window.isDestroyed()||!allowedChatIds.has(target.chatId)||!chat?.messages.some(message=>message.id===target.messageId))return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('wa-open-message',target);return true;}});
  registerCaptureHandlers({ipcMain,BrowserWindow,dialog,getWindow:()=>window,safeSender});
  try{await awaitServer();for(const id of await history.loadOmitted())omittedMessages.add(id);for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();startWhatsapp();}
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}

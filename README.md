@@ -134,3 +134,6 @@ Removidos o PNG antigo de mensagens, substituído pelo SVG, e estilos abandonado
 Contadores de 7 e 30 dias mostram dias restantes até as últimas 24 horas, quando passam para HH:MM:SS. A opção de 30 dias mantém também a data final.
 
 O protocolo para os próximos passos está em [docs/PROTOCOLO_CONEXOES_DEPARTAMENTOS.md](docs/PROTOCOLO_CONEXOES_DEPARTAMENTOS.md): conexões únicas por número, compartilhamento entre departamentos com permissões, atendimentos separados por conexão e transferências auditáveis. Define o desenvolvimento futuro; a integração atual ainda usa uma sessão. A opção Conexão e configurações foi removida do menu da conversa; configurações permanecem na engrenagem.
+
+
+Clique na notificação de uma nova mensagem para abrir sua conversa e centralizar a mensagem com destaque temporário. Funciona nos balões internos e nos balões de desktop; a janela só ganha foco após o clique. O X continua fechando a notificação. Mensagens removidas não são recuperadas automaticamente.
