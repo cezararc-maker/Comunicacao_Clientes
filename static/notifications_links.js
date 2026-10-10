@@ -1,0 +1,13 @@
+'use strict';
+function appendClickableText(node,text){
+ const source=String(text||''),pattern=/\[([^\]\n]+)\]\((https?:\/\/[^\s<>]+)\)|(https?:\/\/[^\s<>]+|www\.[^\s<>]+)/gi;let position=0;
+ for(const match of source.matchAll(pattern)){node.append(document.createTextNode(source.slice(position,match.index)));let url=match[2]||match[3],suffix='';if(!match[2]){while(/[.,;:!?)]$/.test(url)){suffix=url.slice(-1)+suffix;url=url.slice(0,-1);}}try{const parsed=new URL(url.startsWith('www.')?'https://'+url:url);if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)throw Error();const link=document.createElement('a');link.href=parsed.href;link.target='_blank';link.rel='noopener noreferrer';link.className='message-link';link.textContent=match[1]||url;node.append(link,document.createTextNode(suffix));}catch{node.append(document.createTextNode(match[0]));}position=match.index+match[0].length;}
+ node.append(document.createTextNode(source.slice(position)));
+}
+let notificationTimer=null,notificationGeneration=0;
+function notifyBubble(text,ok=false){
+ clearTimeout(notificationTimer);const generation=++notificationGeneration,box=document.getElementById('feedback');box.replaceChildren();box.className='';const message=String(text||'').replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/,'');if(!message||ok)return;
+ box.className='notification-bubble';box.setAttribute('role','status');const body=document.createElement('span');body.className='notification-text';body.textContent=message;const close=document.createElement('button');close.type='button';close.className='notification-close';close.textContent='×';close.setAttribute('aria-label','Fechar notificação');box.append(body,close);
+ function dismiss(effect){if(generation!==notificationGeneration||box.classList.contains('notification-ending'))return;clearTimeout(notificationTimer);box.classList.add('notification-ending',effect);const rect=box.getBoundingClientRect();for(let i=0;i<12;i++){const particle=document.createElement('span');particle.className='notification-particle '+effect;particle.style.left=(rect.left+rect.width/2)+'px';particle.style.top=(rect.top+rect.height/2)+'px';const angle=i*Math.PI/6;particle.style.setProperty('--dx',Math.cos(angle)*(45+rect.width/3)+'px');particle.style.setProperty('--dy',Math.sin(angle)*70+'px');particle.style.setProperty('--rotation',(i*47)+'deg');document.body.append(particle);setTimeout(()=>particle.remove(),650);}notificationTimer=setTimeout(()=>{if(generation===notificationGeneration){box.replaceChildren();box.className='';}},550);}
+ close.onclick=()=>dismiss('notification-glass');notificationTimer=setTimeout(()=>dismiss('notification-pop'),5000);
+}

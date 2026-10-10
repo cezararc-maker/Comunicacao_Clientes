@@ -60,7 +60,7 @@ function renderMessages(chat){
     if(['image','sticker','audio','ptt','video','document'].includes(m.type)&&!m.pending&&m.ack!==-1){const b=document.createElement('button');b.className='load-media secondary hidden';b.textContent='Carregar '+(m.mediaLabel||'anexo').toLocaleLowerCase('pt-BR');b.onclick=()=>loadMessageMedia(node,m,chat.id);box.append(b);const error=document.createElement('small');error.className='media-error';error.textContent='Carregando '+(m.mediaLabel||'anexo').toLocaleLowerCase('pt-BR')+'…';box.append(error);}
     else box.textContent=m.mediaLabel||'Anexo';bubble.append(box);
    }
-   if(['vcard','multi_vcard'].includes(m.type)){bubble.append(renderContactCards(m));}else if(m.body){const body=document.createElement('div');body.className='message-body';body.textContent=messageDisplayText(m,chat);bubble.append(body);}
+   if(['vcard','multi_vcard'].includes(m.type)){bubble.append(renderContactCards(m));}else if(m.body){const body=document.createElement('div');body.className='message-body';appendClickableText(body,messageDisplayText(m,chat));bubble.append(body);}
    const time=document.createElement('small');time.className='message-time';time.textContent=Number.isFinite(m.timestamp)?new Date(m.timestamp*1000).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';bubble.append(time);
    bubble.append(messagePinMenu(m,chat));
    node.ondblclick=e=>{if(e.target.closest('button,audio,video,a,details'))return;quoted=m.id;renderReplyBanner();$('wamessage').focus();};
