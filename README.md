@@ -142,3 +142,11 @@ Clique na notificação de uma nova mensagem para abrir sua conversa e centraliz
 ## v0.15.0 — ícones das ações
 
 Pacote de 60 SVGs integrado às ações sem ícones por um registro central com nomes semânticos. Ícones herdam a cor do tema; rótulos, atalhos e confirmações permanecem. Salvar vínculo teve apenas o enquadramento corrigido, com autorização do usuário. Clipe, mensagens, contatos e ícones previamente escolhidos da navegação foram preservados. A opção Conexão e configurações continua removida do menu da conversa. Nenhuma regra de sincronização ou dado foi alterado.
+
+
+### Atualização 0.16.0
+
+- Indicadores recebidos de digitação e gravação de áudio no cabeçalho das conversas já iniciadas, com observação restrita aos contatos e grupo de teste.
+- A atividade é temporária: não altera o histórico, não busca mensagens antigas e desaparece na pausa, expiração ou desconexão. Depende dos sinais e modelos disponíveis na versão conectada do WhatsApp Web.
+- Nome do aplicativo centralizado na barra da janela, com Segoe UI Variable/Segoe UI e controles preservados à direita.
+- Próxima etapa sugerida: identificação das conexões nos registros, usuários e permissões por departamento; depois múltiplos números, triagem e transferências com protocolo.

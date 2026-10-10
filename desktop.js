@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const QRCode = require('qrcode');
+const {createPresenceMonitor}=require('./chat_presence');
 const {usableName,buildDirectory,conversationName}=require('./contact_names');
 const {PHONES,SINCE,phoneInScope,messageInScope}=require('./sync_scope');
 const {resolvePhoto}=require('./profile_photos');
@@ -25,6 +26,7 @@ let photoDiagnostics={};
 const syncToken=crypto.randomBytes(32).toString('hex');
 let state = { status:'desconectado', qr:null, error:null, conversations:[], contactsCount:0, sync:'aguardando',syncProgress:{running:false,completed:0,total:10,percent:0,label:'Aguardando conexão'},testScope:{phones:PHONES,groupName:TEST_GROUP,since:SINCE},photos:{} };
 const conversations = new Map();
+const presenceMonitor=createPresenceMonitor({getClient:()=>client,getChats:()=>[...conversations.keys()].filter(id=>allowedChatIds.has(id)),onChange:presence=>{state.presence=presence;if(window&&!window.isDestroyed())window.webContents.send('wa-presence',presence);}});
 const mediaMessages=new Map();
 let historyReady=false,photoTimer=null,photoRefreshing=false;
 let readActiveChatId=null;const acknowledgments=new Map();
@@ -156,7 +158,7 @@ async function performScopedSync(){
 }
 async function resetClient(){
  if(initializing||restarting)return;
- restarting=true;update({status:'reconectando',qr:null,error:null});
+ restarting=true;await presenceMonitor.stop();update({status:'reconectando',qr:null,error:null});
  try{if(client)await client.destroy()}catch(e){console.error('Falha ao destruir sessão:',e.message)}
  client=null;restarting=false;startWhatsapp();
 }
@@ -170,12 +172,12 @@ async function startWhatsapp(){
   client.on('qr',async q=>{ try { update({status:'qr',qr:await QRCode.toDataURL(q,{margin:2,width:320}),error:null}); } catch(e){update({status:'erro',error:e.message})} });
   client.on('authenticated',()=>update({status:'autenticado',qr:null,error:null}));
   client.on('loading_screen',(percent,message)=>update({connectionLoading:Number(percent)||0,connectionMessage:'Carregando WhatsApp'}));
-  client.on('ready',async()=>{await installWebCompatibility(client);profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,300000);photoTimer.unref?.();});
+  client.on('ready',async()=>{await installWebCompatibility(client);profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();try{const result=await presenceMonitor.start();if(!result.supported)console.warn('Indicadores de atividade indisponíveis nesta versão do WhatsApp Web.');}catch(error){console.warn('Indicadores de atividade:',error.message);}clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,300000);photoTimer.unref?.();});
   client.on('message_ack',(msg,ack)=>{const id=serializedId(msg.id);if(!id)return;acknowledgments.set(id,Number(ack));if(acknowledgments.size>2000)acknowledgments.delete(acknowledgments.keys().next().value);for(const chat of conversations.values()){const m=chat.messages.find(m=>m.id===id);if(m)m.ack=Number(ack);}update({});});
   for(const event of ['group_join','group_leave','group_admin_changed','group_update'])client.on(event,notification=>{const id=String(notification.chatId||'');if(conversations.get(id)?.isGroup&&allowedChatIds.has(id))update({groupRevision:(state.groupRevision||0)+1});});
   client.on('message',storeMessage);client.on('message_create',storeMessage);
-  client.on('disconnected',reason=>update({status:'desconectado',qr:null,error:'Sessão desconectada: '+String(reason)}));
-  client.on('auth_failure',msg=>update({status:'erro',error:'Falha de autenticação: '+msg,qr:null}));
+  client.on('disconnected',reason=>{presenceMonitor.stop();update({status:'desconectado',qr:null,error:'Sessão desconectada: '+String(reason)});});
+  client.on('auth_failure',msg=>{presenceMonitor.stop();update({status:'erro',error:'Falha de autenticação: '+msg,qr:null});});
   await client.initialize();
  }catch(e){update({status:'erro',error:e.message,qr:null})}
  finally{initializing=false}
