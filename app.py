@@ -4,6 +4,7 @@ import re
 import io
 import csv
 import sqlite3
+import json
 from pathlib import Path
 from contextlib import contextmanager
 from flask import Flask, request, jsonify, send_from_directory
@@ -46,6 +47,10 @@ def init_db():
           funcao TEXT NOT NULL DEFAULT '',
           PRIMARY KEY(empresa_id, contato_id)
         );
+        CREATE TABLE IF NOT EXISTS wa_conversas (id TEXT PRIMARY KEY, dados TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS wa_mensagens (id TEXT PRIMARY KEY, conversa_id TEXT NOT NULL, timestamp REAL NOT NULL, dados TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS wa_mensagens_conversa ON wa_mensagens(conversa_id,timestamp);
+        CREATE TABLE IF NOT EXISTS wa_midias (mensagem_id TEXT PRIMARY KEY, dados TEXT NOT NULL);
         """)
 
 def digits(s):
@@ -355,6 +360,54 @@ def contact_confirm():
                 db.execute('INSERT INTO contatos(nome,telefone) VALUES (?,?)', (row['nome'], row['telefone']))
                 new += 1
     return jsonify(ok=True, novos=new, preservados=len(rows)-new)
+
+def history_authorized():
+    token = os.environ.get('WA_SYNC_TOKEN', '')
+    return bool(token) and hmac.compare_digest(token, request.headers.get('X-Sync-Token', ''))
+
+@app.route('/api/whatsapp/historico', methods=['GET', 'POST'])
+def whatsapp_history():
+    if not history_authorized():
+        return jsonify(erro='Acesso não autorizado'), 403
+    if request.method == 'POST':
+        payload = request.get_json(silent=True)
+        chats = payload.get('conversations') if isinstance(payload, dict) else None
+        if not isinstance(chats, list) or len(chats) > 100:
+            return jsonify(erro='Histórico inválido'), 400
+        for chat in chats:
+            if not isinstance(chat, dict) or not isinstance(chat.get('id'), str) or not re.fullmatch(r'\d+@(?:lid|c\.us)', chat['id']):
+                return jsonify(erro='Conversa inválida'), 400
+            messages = chat.get('messages', [])
+            if not isinstance(messages, list) or any(not isinstance(m, dict) or not isinstance(m.get('id'), str) or not m['id'] or not isinstance(m.get('timestamp'), (int, float)) for m in messages):
+                return jsonify(erro='Mensagens inválidas'), 400
+    with connect() as db:
+        if request.method == 'GET':
+            conversations = []
+            for row in db.execute('SELECT id,dados FROM wa_conversas'):
+                chat = json.loads(row['dados'])
+                chat['messages'] = [json.loads(m['dados']) for m in db.execute('SELECT dados FROM wa_mensagens WHERE conversa_id=? ORDER BY timestamp,id', (row['id'],))]
+                conversations.append(chat)
+            return jsonify(conversations)
+        for chat in chats:
+            metadata = {k: v for k, v in chat.items() if k != 'messages'}
+            db.execute('INSERT INTO wa_conversas(id,dados) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET dados=excluded.dados', (chat['id'], json.dumps(metadata, ensure_ascii=False)))
+            for message in chat.get('messages', []):
+                db.execute('INSERT INTO wa_mensagens(id,conversa_id,timestamp,dados) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET dados=excluded.dados,timestamp=excluded.timestamp', (message['id'],chat['id'],message['timestamp'],json.dumps(message,ensure_ascii=False)))
+    return jsonify(ok=True)
+
+@app.route('/api/whatsapp/midia/<path:message_id>', methods=['GET', 'POST'])
+def whatsapp_media_cache(message_id):
+    if not history_authorized():
+        return jsonify(erro='Acesso não autorizado'), 403
+    with connect() as db:
+        if request.method == 'GET':
+            row = db.execute('SELECT dados FROM wa_midias WHERE mensagem_id=?', (message_id,)).fetchone()
+            return jsonify(json.loads(row['dados']) if row else None)
+        data = request.get_json(silent=True)
+        if not isinstance(data,dict) or len(str(data.get('data',''))) > 24*1024*1024:
+            return jsonify(erro='Mídia inválida'), 400
+        db.execute('INSERT INTO wa_midias(mensagem_id,dados) VALUES (?,?) ON CONFLICT(mensagem_id) DO UPDATE SET dados=excluded.dados', (message_id,json.dumps(data)))
+    return jsonify(ok=True)
 
 if __name__=="__main__":
     init_db()

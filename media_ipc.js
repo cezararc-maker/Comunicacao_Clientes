@@ -1,11 +1,12 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {validateMedia,mediaLabel,MAX_MEDIA}=require('./media_messages');
-function registerMediaHandlers({ipcMain,dialog,getWindow,safeSender,getClient,getState,getMessage,storeMessage}){
+const {downloadMediaCompat,normalizeMessage,serializedId}=require('./whatsapp_compat');
+function registerMediaHandlers({ipcMain,dialog,getWindow,safeSender,getClient,getState,getMessage,storeMessage,readMedia=async()=>null,saveMedia=async()=>{}}){
  const selections=new Map(),downloads=new Map();
  function connected(e){if(!safeSender(e))throw Error('Janela não autorizada');if(getState().status!=='conectado')throw Error('Conecte o WhatsApp primeiro.');}
  function target(chatId){const id=String(chatId||'');if(!getState().conversations.some(c=>c.id===id))throw Error('Selecione uma conversa aberta.');return id;}
- const fileKinds={image:{title:'Selecionar foto',extensions:['jpg','jpeg','png','webp']},audio:{title:'Selecionar áudio',extensions:['mp3','ogg','m4a','wav','webm','aac']},sticker:{title:'Selecionar figurinha',extensions:['webp','png','jpg','jpeg']}};
+ const fileKinds={image:{title:'Selecionar foto',extensions:['jpg','jpeg','png','webp']},video:{title:'Selecionar vídeo',extensions:['mp4','webm']},document:{title:'Selecionar arquivo ou documento',extensions:['*']},audio:{title:'Selecionar áudio',extensions:['mp3','ogg','m4a','wav','webm','aac']},sticker:{title:'Selecionar figurinha',extensions:['webp','png','jpg','jpeg']}};
  ipcMain.handle('wa-select-media',async(e,info)=>{
   connected(e);const kind=String(info?.kind||'');if(!fileKinds[kind])throw Error('Tipo de anexo inválido.');
   const selected=await dialog.showOpenDialog(getWindow(),{title:fileKinds[kind].title,properties:['openFile'],filters:[{name:mediaLabel(kind),extensions:fileKinds[kind].extensions}]});
@@ -30,22 +31,28 @@ function registerMediaHandlers({ipcMain,dialog,getWindow,safeSender,getClient,ge
    kind='voice';media=validateMedia(info.media,'audio');if(media.bytes>8*1024*1024||!/^audio\/(webm|ogg)$/.test(media.mimetype))throw Error('Gravação inválida ou acima de 8 MB.');
   }
   const caption=String(info?.caption||'').trim();if(caption.length>10000)throw Error('Legenda muito longa.');
-  const options={sendMediaAsSticker:kind==='sticker',sendAudioAsVoice:kind==='voice'};
-  if(kind==='image'&&caption)options.caption=caption;if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
+  const options={sendMediaAsSticker:kind==='sticker',sendAudioAsVoice:kind==='voice',sendMediaAsDocument:kind==='document'};
+  if(['image','video'].includes(kind)&&caption)options.caption=caption;if(info?.quotedId)options.quotedMessageId=String(info.quotedId);
   const sent=await getClient().sendMessage(chatId,new MessageMedia(media.mimetype,media.data,media.filename||null),options);
   if(!sent)throw Error('O WhatsApp não confirmou o envio.');storeMessage(sent);
+  const sentId=serializedId(sent.id);
+  // Stickers are converted by WhatsApp; cache their resulting WebP on download.
+  if(sentId&&kind!=='sticker')await saveMedia(sentId,{mimetype:media.mimetype,data:media.data,filename:media.filename}).catch(error=>console.error('Cache do anexo enviado:',error.message));
   if(selection)selections.delete(String(info.selectionId));return {ok:true};
  });
  ipcMain.handle('wa-message-media',async(e,info)=>{
-  connected(e);const chatId=target(info?.chatId),id=String(info?.messageId||'');
+  if(!safeSender(e))throw Error('Janela não autorizada');const chatId=target(info?.chatId),id=String(info?.messageId||'');
   const chat=getState().conversations.find(c=>c.id===chatId),entry=chat.messages.find(m=>m.id===id&&m.hasMedia);
-  if(!entry||!['image','sticker','audio','ptt'].includes(entry.type))throw Error('Anexo indisponível nesta conversa.');
+  if(!entry||!['image','sticker','audio','ptt','video','document'].includes(entry.type))throw Error('Anexo indisponível nesta conversa.');
   if(downloads.has(id))return downloads.get(id);if(downloads.size>=3)throw Error('Aguarde os anexos em carregamento.');
   const job=(async()=>{
+   const cached=await readMedia(id);if(cached)return cached;
+   connected(e);
    const message=getMessage(id)||await getClient().getMessageById(id);
-   const downloaded=await message?.downloadMedia();if(!downloaded)throw Error('O WhatsApp não disponibilizou este anexo. Tente novamente.');
-   const media=validateMedia(downloaded,['audio','ptt'].includes(entry.type)?'audio':'image');
-   return {mimetype:media.mimetype,data:media.data,filename:media.filename};
+   normalizeMessage(message);
+   const downloaded=await downloadMediaCompat(getClient(),message,id);if(!downloaded)throw Error('O WhatsApp não disponibilizou este anexo. Tente novamente.');
+   const media=validateMedia(downloaded,['audio','ptt'].includes(entry.type)?'audio':entry.type==='sticker'?'image':entry.type);
+   const result={mimetype:media.mimetype,data:media.data,filename:media.filename};await saveMedia(id,result);return result;
   })();downloads.set(id,job);try{return await job;}finally{downloads.delete(id);}
  });
 }

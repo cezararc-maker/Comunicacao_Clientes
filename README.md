@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.6.0 — aplicativo desktop (teste)
+# Comunicação Clientes v0.6.1 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -51,3 +51,8 @@ Após instalar requirements.txt, execute `python -m unittest discover -s tests -
 Flask restringe a interface a `127.0.0.1` neste protótipo. A base contém dados reais se importados; faça backup de `dados/comunicacao.db`. A integração não oficial pode apresentar riscos. Para uso empresarial, avaliar a API oficial.
 
 Na v0.6.0, os testes de interface em navegador isolado verificaram prévias, envio simulado dos quatro tipos de mídia, emojis, ordem cronológica, player preservado, Esc e gravação com microfone sintético. Nenhuma mensagem foi enviada a contatos reais durante esses testes. O envio e recebimento completos precisam ser conferidos na sessão WhatsApp após atualizar o aplicativo.
+
+
+Na v0.6.1, conversas e anexos baixados são preservados no banco local `dados/comunicacao.db` e reaparecem ao abrir o aplicativo, antes da conexão WhatsApp. Atualizações não exigem apagar dados ou refazer a sincronização do histórico. A sessão QR continua em `%APPDATA%/comunicacao-clientes/wa-session`. Faça backup dessas duas pastas com o aplicativo fechado; não apague nem substitua o banco para atualizar. O corte de teste continua em 09/10/2026 às 01h (Cuiabá), com somente os dois contatos definidos.
+
+Foram corrigidos os identificadores e o tipo de arquivo usados para baixar mídias nas versões recentes do WhatsApp Web. O compositor possui clipe para fotos, vídeos, áudios e documentos/ZIP, e um adesivo para emojis e figurinhas; gravação permanece à direita. Os vínculos empresariais aparecem na lista de conversas. Mensagens enviadas mostram relógio, visto de envio, entrega e leitura; erros aparecem temporariamente. Fotos são verificadas automaticamente a cada minuto enquanto conectado, respeitando a disponibilidade e privacidade do WhatsApp.
