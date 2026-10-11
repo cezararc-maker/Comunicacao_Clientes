@@ -150,3 +150,10 @@ Pacote de 60 SVGs integrado às ações sem ícones por um registro central com 
 - A atividade é temporária: não altera o histórico, não busca mensagens antigas e desaparece na pausa, expiração ou desconexão. Depende dos sinais e modelos disponíveis na versão conectada do WhatsApp Web.
 - Nome do aplicativo centralizado na barra da janela, com Segoe UI Variable/Segoe UI e controles preservados à direita.
 - Próxima etapa sugerida: identificação das conexões nos registros, usuários e permissões por departamento; depois múltiplos números, triagem e transferências com protocolo.
+
+
+### Atualização 0.17.0 — Gestão em testes
+
+Nova área Gestão: primeiro administrador, login, cadastro/edição de usuários e departamentos, responsabilidades por empresa, registro e transferência interna de atendimentos, encerramento com protocolo sequencial e histórico filtrado. O histórico anterior e a sessão WhatsApp são preservados; a migração inicial de uma base existente cria backup em dados/backups.
+
+As permissões desta etapa abrangem a Gestão e seus históricos. A integração do usuário às conversas, aos envios e às notificações WhatsApp é a próxima etapa. Ainda há uma única conexão real. Consulte [o roteiro de testes e limites](docs/GESTAO_TESTES.md).

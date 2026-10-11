@@ -7,9 +7,10 @@ import sqlite3
 import json
 import time
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from flask import Flask, request, jsonify, send_from_directory
 from openpyxl import load_workbook
+from management import init_management, register_management, capture_open_attendances
 from contact_import import phone_key, parse_csv, parse_vcard, inspect_contacts
 
 ROOT = Path(__file__).resolve().parent
@@ -31,6 +32,17 @@ def connect():
         con.close()
 
 def init_db():
+    # One consistent backup before the first additive management migration.
+    if DB.exists():
+        with closing(sqlite3.connect(DB)) as source:
+            old=source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='wa_conversas'").fetchone()
+            migrated=source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='gestao_conexoes'").fetchone()
+            if old and not migrated:
+                backup_dir=DB.parent / 'backups'
+                backup_dir.mkdir(exist_ok=True)
+                backup_file=backup_dir / ('antes_gestao_'+str(time.time_ns())+'.db')
+                with closing(sqlite3.connect(backup_file)) as destination:
+                    source.backup(destination)
     with connect() as db:
         db.executescript("""
         CREATE TABLE IF NOT EXISTS empresas (
@@ -58,6 +70,10 @@ def init_db():
         """)
         if "duracao" not in {row[1] for row in db.execute("PRAGMA table_info(wa_fixadas)")}:
             db.execute("ALTER TABLE wa_fixadas ADD COLUMN duracao INTEGER NOT NULL DEFAULT 0")
+
+        init_management(db)
+
+register_management(app, connect)
 
 def digits(s):
     return re.sub(r"\D", "", str(s or ""))
@@ -437,6 +453,7 @@ def whatsapp_history():
             db.execute('INSERT INTO wa_conversas(id,dados) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET dados=excluded.dados', (chat['id'], json.dumps(metadata, ensure_ascii=False)))
             for message in chat.get('messages', []):
                 db.execute('INSERT INTO wa_mensagens(id,conversa_id,timestamp,dados) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET dados=excluded.dados,timestamp=excluded.timestamp', (message['id'],chat['id'],message['timestamp'],json.dumps(message,ensure_ascii=False)))
+        capture_open_attendances(db)
     return jsonify(ok=True)
 
 @app.route('/api/whatsapp/midia/<path:message_id>', methods=['GET', 'POST'])
