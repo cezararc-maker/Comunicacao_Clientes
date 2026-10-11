@@ -4,7 +4,7 @@ async function openNotificationMessage(target){
  const sequence=++notificationNavigationSequence;
  try{
   if(!target?.chatId||!target.messageId)return;
-  const latest=await window.desktopApi.getState();if(sequence!==notificationNavigationSequence)return;
+  const latest=await window.chatApi.getState();if(sequence!==notificationNavigationSequence)return;
   if(latest)waState=latest;
   const chat=waState.conversations.find(c=>c.id===target.chatId);
   if(!chat?.messages.some(message=>message.id===target.messageId)){aviso('Esta mensagem não está mais disponível no histórico local.');return;}
@@ -17,9 +17,9 @@ async function openNotificationMessage(target){
  }catch(error){aviso('Não foi possível abrir a mensagem: '+cleanError(error));}
 }
 function installNotificationNavigation(){
- if(notificationNavigationInstalled||!window.desktopApi)return;notificationNavigationInstalled=true;
- const removeOpen=window.desktopApi.onOpenMessage?.(openNotificationMessage);
- const removeIncoming=window.desktopApi.onIncomingMessage?.(target=>{
+ if(notificationNavigationInstalled||!window.chatApi)return;notificationNavigationInstalled=true;
+ const removeOpen=window.chatApi.onOpenMessage?.(openNotificationMessage);
+ const removeIncoming=window.chatApi.onIncomingMessage?.(target=>{
   if(waChat===target.chatId&&!$('view-whatsapp').classList.contains('hidden'))return;
   showInternalNotification(target.title+'\n'+(target.text||'Nova mensagem'),{action:()=>openNotificationMessage(target)});
  });

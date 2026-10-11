@@ -32,5 +32,5 @@ with tempfile.TemporaryDirectory() as folder:
     running.wait(.01) if not running.is_set() else time.sleep(.08)
  adapter=threading.Thread(target=fake_adapter,daemon=True);adapter.start()
  try:
-  result=subprocess.run(['node',str(repo/'tests/test_management_ui.cjs')],cwd=str(repo));sys.exit(result.returncode)
+  result=subprocess.run(['node',str(repo/'tests'/os.environ.get('MANAGEMENT_UI_SCRIPT','test_management_ui.cjs'))],cwd=str(repo));sys.exit(result.returncode)
  finally:running.clear();adapter.join(timeout=2);http.shutdown()

@@ -50,3 +50,9 @@ O administrador mantém a área anterior com os recursos já existentes. Atenden
 - `python tests/run_management_ui.py`
 
 Os testes usam bancos temporários, clientes simulados e navegador oculto, sem alterar o WhatsApp real. Cobrem dois números, número compartilhado, triagem, responsáveis, permissões, mídia por conexão, histórico, sequência de protocolos, transferências, pendência após falha/reinício e número remetente. Conexões simultâneas com números reais, envio de voz/mídia e disponibilidade dos QR Codes ainda precisam de validação no aplicativo com as contas de teste.
+
+
+## Interface 0.19
+O atendimento acontece em Conversas, na interface existente de mensagens. Gestão reúne histórico, cadastros, triagem e conexões. O botão + inicia uma conversa no departamento autorizado. O indicador ao lado da lupa oferece Em atendimento (verde), Com pendência (vermelho), Aguardando documentação (azul escuro) e Concluído. Concluir pede o resumo, preserva o protocolo/histórico e fecha a conversa. Transferir atendimento fica nos três pontos com o ícone de encaminhamento.
+
+Texto, respostas, áudio gravado, anexos, mídia recebida e reutilização de figurinhas/GIFs usam o atendimento autorizado para determinar o número remetente. Não se troca o cliente global nem se utiliza outro número como alternativa. Recursos legados de administração de grupos, captura e ações em lote continuam no número principal para administradores; sua extensão às conexões adicionais ainda precisa da integração específica. Testes de interface são executados sem WhatsApp real e com banco temporário.

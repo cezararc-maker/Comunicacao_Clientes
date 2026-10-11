@@ -30,7 +30,7 @@ function showMedia(node,message,uri){
 }
 async function loadMessageMedia(node,message,chatId,automatic=false){
  const button=node.querySelector('.load-media');if(!button||button.disabled)return;button.disabled=true;button.textContent='Carregando…';
- try{const media=await window.desktopApi.messageMedia({chatId,messageId:message.id});
+ try{const media=await window.chatApi.messageMedia({chatId,messageId:message.id});
   if((message.type!=='document'&&!/^(image\/(png|jpeg|webp|gif)|video\/(mp4|webm)|audio\/(ogg|mpeg|mp4|wav|x-wav|webm|aac|opus))$/.test(media.mimetype))||!media.data)throw Error('Formato não suportado.');message.filename=media.filename;
   showMedia(node,message,cachedMedia(message.id,media));
  }catch(error){button.disabled=false;button.textContent='Tentar carregar novamente';button.title=error.message;const attempt=mediaRetries.get(message.id)||0;if(automatic&&waState.status==='conectado'&&attempt<2){mediaRetries.set(message.id,attempt+1);setTimeout(()=>{if(node.isConnected){autoMedia.delete(message.id);scheduleMedia(node,message,chatId);}},2000);}else button.classList.remove('hidden');if(!automatic)aviso(error.message);}
@@ -76,7 +76,7 @@ function renderMessages(chat){
 }
 function newestMessages(){const area=$('wamessages');area.dataset.followBottom='1';area.scrollTop=area.scrollHeight;$('new-messages').classList.add('hidden');}
 function releaseDraft(){if(mediaDraft?.preview?.startsWith('blob:'))URL.revokeObjectURL(mediaDraft.preview);mediaDraft=null;$('media-preview').replaceChildren();}
-function closeMedia(){if($('media-dialog').open)$('media-dialog').close();releaseDraft();if(!mediaSending)window.desktopApi?.discardMedia?.().catch(()=>{});}
+function closeMedia(){if($('media-dialog').open)$('media-dialog').close();releaseDraft();if(!mediaSending)window.chatApi?.discardMedia?.().catch(()=>{});}
 function presentMedia(draft){
  mediaDraft=draft;$('media-title').textContent=({clipboard:'Enviar imagem colada',image:'Enviar foto',video:'Enviar vídeo',document:'Enviar arquivo',audio:'Enviar áudio',sticker:'Enviar figurinha',voice:'Enviar mensagem de voz',gif:'Enviar GIF'}[draft.kind]);
  $('media-recipient').textContent='Para: '+((waState.conversations||[]).find(c=>c.id===draft.chatId)?.name||draft.chatId);
@@ -84,12 +84,12 @@ function presentMedia(draft){
  const isPdf=draft.kind==='document'&&draft.mimetype==='application/pdf';const content=document.createElement(isPdf?'iframe':draft.kind==='document'?'p':['video','gif'].includes(draft.kind)?'video':['audio','voice'].includes(draft.kind)?'audio':'img');if(draft.kind==='document'&&!isPdf)content.textContent='Arquivo pronto para enviar: '+draft.name;else content.src=draft.preview;if(['AUDIO','VIDEO'].includes(content.tagName))content.controls=true;else content.alt='Prévia do anexo';$('media-preview').replaceChildren(isPdf?pdfThumbnail(draft.preview,draft.name||'Documento PDF'):content);$('media-send').disabled=false;$('media-dialog').showModal();
 }
 async function chooseMedia(kind){
- if(!window.desktopApi||!waChat){aviso('Escolha uma conversa.');return;}if(mediaSending)return;stopVoice(true);closeMedia();$('attachment-panel').classList.add('hidden');$('sticker-panel').classList.add('hidden');const chatId=waChat;
- try{const selected=await window.desktopApi.selectMedia({kind});if(!selected.canceled&&waChat===chatId){if(['sticker','gif'].includes(kind))await sendInstantMedia({...selected,chatId,quotedId:quoted});else presentMedia({...selected,chatId,quotedId:quoted});}else window.desktopApi.discardMedia().catch(()=>{});}catch(error){aviso(error.message);}
+ if(!window.chatApi||!waChat){aviso('Escolha uma conversa.');return;}if(mediaSending)return;stopVoice(true);closeMedia();$('attachment-panel').classList.add('hidden');$('sticker-panel').classList.add('hidden');const chatId=waChat;
+ try{const selected=await window.chatApi.selectMedia({kind});if(!selected.canceled&&waChat===chatId){if(['sticker','gif'].includes(kind))await sendInstantMedia({...selected,chatId,quotedId:quoted});else presentMedia({...selected,chatId,quotedId:quoted});}else window.chatApi.discardMedia().catch(()=>{});}catch(error){aviso(error.message);}
 }
 async function sendPreparedMedia(){
  if(!mediaDraft||mediaSending)return;const draft=mediaDraft;mediaSending=true;$('media-send').disabled=true;const id=queueOutgoing(draft.chatId,{body:$('media-caption').value,type:draft.kind==='voice'?'ptt':draft.kind==='clipboard'?'image':draft.kind==='gif'?'video':draft.kind,hasMedia:true,mediaLabel:$('media-title').textContent});
- try{await window.desktopApi.sendMedia({chatId:draft.chatId,selectionId:draft.selectionId,kind:draft.kind,media:draft.media,caption:$('media-caption').value,quotedId:draft.quotedId});finishOutgoing(id);closeMedia();cancelReply();}
+ try{await window.chatApi.sendMedia({chatId:draft.chatId,selectionId:draft.selectionId,kind:draft.kind,media:draft.media,caption:$('media-caption').value,quotedId:draft.quotedId});finishOutgoing(id);closeMedia();cancelReply();}
  catch(error){finishOutgoing(id,error);aviso(error.message);if(mediaDraft)$('media-send').disabled=false;}
  finally{mediaSending=false;renderWA();}
 }
@@ -112,7 +112,7 @@ async function recordVoice(){
   voiceTimer=setInterval(()=>{const seconds=Math.floor((Date.now()-voiceStarted)/1000);$('voice-time').textContent=Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');if(seconds>=120)stopVoice();},500);
  }catch(error){stopVoice(true);aviso(error.name==='NotAllowedError'?'O microfone não foi autorizado. Você pode selecionar um arquivo de áudio.':error.message);}finally{voicePending=false;}
 }
-function closeConversation(){cancelCapture();closeDetails();stopVoice(true);closeMedia();$('emoji-panel').classList.add('hidden');$('attachment-panel').classList.add('hidden');$('sticker-panel').classList.add('hidden');document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());$('photo-full').removeAttribute('src');$('mention-picker').classList.add('hidden');mentionSelection.clear();hideCompanyBalloon();waChat=null;window.desktopApi?.markRead?.(null).catch(()=>{});quoted=null;$('wamessage').value='';renderWA();}
+function closeConversation(){cancelCapture();closeDetails();stopVoice(true);closeMedia();$('emoji-panel').classList.add('hidden');$('attachment-panel').classList.add('hidden');$('sticker-panel').classList.add('hidden');document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());$('photo-full').removeAttribute('src');$('mention-picker').classList.add('hidden');mentionSelection.clear();hideCompanyBalloon();waChat=null;window.chatApi?.markRead?.(null).catch(()=>{});quoted=null;$('wamessage').value='';renderWA();}
 document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;if($('view-whatsapp').classList.contains('hidden'))return;event.preventDefault();closeConversation();});
 document.getElementById('media-dialog').addEventListener('cancel',e=>{e.preventDefault();closeConversation();});
 document.getElementById('photo-dialog').addEventListener('cancel',e=>{e.preventDefault();closeConversation();});
