@@ -1,3 +1,5 @@
+> Roteiro da v0.17.0 preservado como referência. Para a versão atual, use [Atendimento por departamentos](ATENDIMENTO_DEPARTAMENTOS.md).
+
 # Gestão e histórico — primeira etapa de testes (0.17.0)
 
 ## Começar

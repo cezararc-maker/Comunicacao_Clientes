@@ -1,6 +1,7 @@
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
 contextBridge.exposeInMainWorld('desktopApi',{
+ onManagementOpenMessage:callback=>{const listener=(_event,target)=>callback(target);ipcRenderer.on('management-open-message',listener);return ()=>ipcRenderer.removeListener('management-open-message',listener);},
  onPresence:callback=>{const listener=(_event,presence)=>callback(presence);ipcRenderer.on('wa-presence',listener);return ()=>ipcRenderer.removeListener('wa-presence',listener);},
  onOpenMessage:callback=>{const listener=(_event,target)=>callback(target);ipcRenderer.on('wa-open-message',listener);return ()=>ipcRenderer.removeListener('wa-open-message',listener);},
  onIncomingMessage:callback=>{const listener=(_event,target)=>callback(target);ipcRenderer.on('wa-incoming-message',listener);return ()=>ipcRenderer.removeListener('wa-incoming-message',listener);},

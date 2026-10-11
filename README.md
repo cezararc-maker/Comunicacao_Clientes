@@ -1,4 +1,4 @@
-# Comunicação Clientes v0.13.0 — aplicativo desktop (teste)
+# Comunicação Clientes v0.18.0 — aplicativo desktop (teste)
 
 ## Windows
 
@@ -157,3 +157,7 @@ Pacote de 60 SVGs integrado às ações sem ícones por um registro central com 
 Nova área Gestão: primeiro administrador, login, cadastro/edição de usuários e departamentos, responsabilidades por empresa, registro e transferência interna de atendimentos, encerramento com protocolo sequencial e histórico filtrado. O histórico anterior e a sessão WhatsApp são preservados; a migração inicial de uma base existente cria backup em dados/backups.
 
 As permissões desta etapa abrangem a Gestão e seus históricos. A integração do usuário às conversas, aos envios e às notificações WhatsApp é a próxima etapa. Ainda há uma única conexão real. Consulte [o roteiro de testes e limites](docs/GESTAO_TESTES.md).
+
+## Atendimento por departamentos (v0.18.0)
+
+A Gestão integra conversas, abertura automática, responsáveis por empresa/departamento, conexões independentes ou compartilhadas, situações de pendência/documentação/conclusão e transferências entre números com aviso persistente. Consulte [configuração e roteiro de testes](docs/ATENDIMENTO_DEPARTAMENTOS.md). O histórico e as sessões anteriores são preservados. Esta versão permanece destinada a testes locais.

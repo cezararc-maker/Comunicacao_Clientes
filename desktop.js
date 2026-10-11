@@ -19,6 +19,8 @@ const {createDesktopNotifications}=require('./desktop_notifications');let deskto
 const {registerBatchHandlers}=require('./batch_messages');const omittedMessages=new Set();
 const {registerMediaHandlers}=require('./media_ipc');
 const {registerCaptureHandlers}=require('./capture_conversation');
+const {createDepartmentConnections}=require('./department_connections');
+let departmentConnections=null,legacyAuthorized=false,managementConfigured=false;
 let window, pythonProcess, client;
 let restarting=false, initializing=false,syncJob=null;
 const allowedChatIds=new Set(PHONES.map(p=>p+'@c.us'));
@@ -26,7 +28,7 @@ let photoDiagnostics={};
 const syncToken=crypto.randomBytes(32).toString('hex');
 let state = { status:'desconectado', qr:null, error:null, conversations:[], contactsCount:0, sync:'aguardando',syncProgress:{running:false,completed:0,total:10,percent:0,label:'Aguardando conexão'},testScope:{phones:PHONES,groupName:TEST_GROUP,since:SINCE},photos:{} };
 const conversations = new Map();
-const presenceMonitor=createPresenceMonitor({getClient:()=>client,getChats:()=>[...conversations.keys()].filter(id=>allowedChatIds.has(id)),onChange:presence=>{state.presence=presence;if(window&&!window.isDestroyed())window.webContents.send('wa-presence',presence);}});
+const presenceMonitor=createPresenceMonitor({getClient:()=>client,getChats:()=>[...conversations.keys()].filter(id=>allowedChatIds.has(id)),onChange:presence=>{state.presence=presence;departmentConnections?.presence(1,presence).catch(()=>{});if((!managementConfigured||legacyAuthorized)&&window&&!window.isDestroyed())window.webContents.send('wa-presence',presence);}});
 const mediaMessages=new Map();
 let historyReady=false,photoTimer=null,photoRefreshing=false;
 let readActiveChatId=null;const acknowledgments=new Map();
@@ -53,8 +55,19 @@ async function profilePhoto(id){
 }
 async function hydratePhotos(chats){for(const c of chats){const chat=conversations.get(c.id);if(!chat)continue;chat.photo=await profilePhoto(c.id);update({});}}
 
-function update(patch){state={...state,...patch,conversations:[...conversations.values()].sort((a,b)=>Number(!!b.pinnedConversation)-Number(!!a.pinnedConversation)||b.timestamp-a.timestamp).slice(0,100)}; if(window && !window.isDestroyed()) window.webContents.send('wa-state', state);if(historyReady)history.queue(state.conversations);}
-function safeSender(event){return !!window && event.sender.id === window.webContents.id && event.sender.getURL().startsWith('http://127.0.0.1:8765/');}
+function update(patch){state={...state,...patch,conversations:[...conversations.values()].sort((a,b)=>Number(!!b.pinnedConversation)-Number(!!a.pinnedConversation)||b.timestamp-a.timestamp).slice(0,100)}; if(window && !window.isDestroyed()) window.webContents.send('wa-state', (!managementConfigured||legacyAuthorized)?state:{status:state.status,conversations:[],syncProgress:state.syncProgress});if(historyReady)history.queue(state.conversations);}
+function baseSender(event){return !!window && event.sender.id === window.webContents.id && event.sender.getURL().startsWith('http://127.0.0.1:8765/');}
+function safeSender(event){return baseSender(event)&&(!managementConfigured||legacyAuthorized);}
+const registerHandle=ipcMain.handle.bind(ipcMain);
+ipcMain.handle=(channel,handler)=>registerHandle(channel,async(event,...args)=>{
+ if(channel!=='window-action'&&baseSender(event)){await refreshLegacyAccess();if(managementConfigured&&!legacyAuthorized)throw Error('Entre como administrador para usar a área anterior. Seus atendimentos estão na Gestão.');}
+ return handler(event,...args);
+});
+let activeManagementUser=null,nativeNoticeUser=null,nativeNoticeLast=0;
+async function managementRequest(route){const cookies=await window.webContents.session.cookies.get({url:'http://127.0.0.1:8765/api/gestao/contexto'});return fetch('http://127.0.0.1:8765/api/gestao'+route,{headers:{Cookie:cookies.map(c=>c.name+'='+c.value).join('; ')}});}
+async function refreshLegacyAccess(){try{const configured=await fetch('http://127.0.0.1:8765/api/gestao/status').then(r=>r.json());managementConfigured=!!configured.configurado;const response=await managementRequest('/contexto');activeManagementUser=response.ok?(await response.json()).usuario:null;legacyAuthorized=activeManagementUser?.perfil==='admin';if(nativeNoticeUser!==activeManagementUser?.id){nativeNoticeUser=activeManagementUser?.id;nativeNoticeLast=-1;desktopNotifications?.dispose();}}catch{legacyAuthorized=false;activeManagementUser=null;}}
+async function pollOwnerNotifications(){await refreshLegacyAccess();if(!activeManagementUser)return;try{const r=await managementRequest('/avisos');if(!r.ok)return;const notices=(await r.json()).mensagens||[],latest=Math.max(0,...notices.map(n=>n.id));if(nativeNoticeLast<0){nativeNoticeLast=latest;return;}const fresh=notices.filter(n=>n.id>nativeNoticeLast);nativeNoticeLast=Math.max(nativeNoticeLast,latest);if(!window.isFocused?.()&&fresh.length){const n=fresh[0];await desktopNotifications?.show(n.contato_nome,'Nova mensagem / '+n.empresa_nome,{attendanceId:n.atendimento_id,userId:activeManagementUser.id,messageId:n.mensagem_id});}}catch{}}
+
 function startPython(){
  const args=['app.py'], options={cwd:__dirname,windowsHide:true,env:{...process.env,WA_SYNC_TOKEN:syncToken}};
  if(process.platform==='win32') pythonProcess=spawn('py',['-3',...args],options);
@@ -64,12 +77,13 @@ function startPython(){
 }
 async function awaitServer(){
  for(let i=0;i<80;i++){
-  try{const r=await fetch('http://127.0.0.1:8765/api/empresas');if(r.ok)return;}catch{}
+  try{const r=await fetch('http://127.0.0.1:8765/api/gestao/status');if(r.ok)return;}catch{}
   await new Promise(r=>setTimeout(r,350));
  }
  throw new Error('Servidor de cadastros não iniciou. Verifique Python e as dependências.');
 }
 function storeMessage(msg,historical=false,quotedId=null){
+ if(!historical&&state.status!=='conectado')return;
  normalizeMessage(msg);
  if(!messageInScope(msg,allowedChatIds))return;
  let id=msg.fromMe?msg.to:msg.from;
@@ -88,7 +102,8 @@ function storeMessage(msg,historical=false,quotedId=null){
  const retained=new Set([...conversations.values()].flatMap(c=>c.messages.map(m=>m.id)).concat(chat.messages.map(m=>m.id)));
  for(const key of mediaMessages.keys())if(!retained.has(key))mediaMessages.delete(key);
  chat.timestamp=Math.max(chat.timestamp,entry.timestamp);conversations.set(id,chat);update({});
- if(previous<0&&!historical&&!entry.fromMe&&window&&!window.isDestroyed()){const target={chatId:id,messageId:entry.id,title:chat.name,text:entry.hasMedia?entry.mediaLabel:['vcard','multi_vcard'].includes(entry.type)?'Cartão de contato':entry.body};if(window.isFocused?.())window.webContents.send('wa-incoming-message',target);else desktopNotifications?.show(target.title,target.text,target).catch(()=>{});}
+ if(!historical&&departmentConnections)departmentConnections.receive(1,msg,chat).catch(error=>console.warn('Atendimento:',error.message));
+ if(!managementConfigured&&previous<0&&!historical&&!entry.fromMe&&window&&!window.isDestroyed()){const target={chatId:id,messageId:entry.id,title:chat.name,text:entry.hasMedia?entry.mediaLabel:['vcard','multi_vcard'].includes(entry.type)?'Cartão de contato':entry.body};if(window.isFocused?.())window.webContents.send('wa-incoming-message',target);else desktopNotifications?.show(target.title,target.text,target).catch(()=>{});}
  if(chat.photo===undefined&&!state.syncProgress?.running)profilePhoto(id).then(photo=>{chat.photo=photo;update({});}).catch(()=>{});
  if(!contactDirectory.has(id)&&!id.endsWith('@g.us')&&typeof client?.getContactById==='function'){
   client.getContactById(id).then(async contact=>{
@@ -162,7 +177,7 @@ async function resetClient(){
  try{if(client)await client.destroy()}catch(e){console.error('Falha ao destruir sessão:',e.message)}
  client=null;restarting=false;startWhatsapp();
 }
-async function reportManagementConnection(status,number=''){try{const response=await fetch('http://127.0.0.1:8765/api/gestao/conexao-atual',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({estado:status,numero:number})});if(!response.ok){const result=await response.json();console.warn('Gestão de conexões:',result.erro);}}catch(error){console.warn('Gestão de conexões:',error.message);}}
+async function reportManagementConnection(status,number=''){try{const response=await fetch('http://127.0.0.1:8765/api/gestao/ponte/estado',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({conexao_id:1,estado:status,numero:number})});if(!response.ok){const result=await response.json();console.warn('Gestão de conexões:',result.erro);return false;}return true;}catch(error){console.warn('Gestão de conexões:',error.message);return false;}}
 async function startWhatsapp(){
  if(initializing)return;
  initializing=true;
@@ -171,11 +186,11 @@ async function startWhatsapp(){
  try {
   const { Client, LocalAuth }=require('whatsapp-web.js');
   client=new Client({authStrategy:new LocalAuth({dataPath:path.join(app.getPath('userData'),'wa-session')}),puppeteer:{headless:true,args:['--no-sandbox','--disable-setuid-sandbox']}});
-  client.on('qr',async q=>{ try { update({status:'qr',qr:await QRCode.toDataURL(q,{margin:2,width:320}),error:null}); } catch(e){update({status:'erro',error:e.message})} });
+  client.on('qr',async q=>{ try { const qr=await QRCode.toDataURL(q,{margin:2,width:320});update({status:'qr',qr,error:null});await fetch('http://127.0.0.1:8765/api/gestao/ponte/estado',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({conexao_id:1,estado:'qr',qr})}); } catch(e){update({status:'erro',error:e.message})} });
   client.on('authenticated',()=>update({status:'autenticado',qr:null,error:null}));
   client.on('loading_screen',(percent,message)=>update({connectionLoading:Number(percent)||0,connectionMessage:'Carregando WhatsApp'}));
-  client.on('ready',async()=>{await installWebCompatibility(client);await reportManagementConnection('conectado',serializedId(client.info?.wid).split('@')[0]);profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();try{const result=await presenceMonitor.start();if(!result.supported)console.warn('Indicadores de atividade indisponíveis nesta versão do WhatsApp Web.');}catch(error){console.warn('Indicadores de atividade:',error.message);}clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,300000);photoTimer.unref?.();});
-  client.on('message_ack',(msg,ack)=>{const id=serializedId(msg.id);if(!id)return;acknowledgments.set(id,Number(ack));if(acknowledgments.size>2000)acknowledgments.delete(acknowledgments.keys().next().value);for(const chat of conversations.values()){const m=chat.messages.find(m=>m.id===id);if(m)m.ack=Number(ack);}update({});});
+  client.on('ready',async()=>{await installWebCompatibility(client);const accepted=await reportManagementConnection('conectado',serializedId(client.info?.wid).split('@')[0]);if(!accepted){update({status:'erro',error:'Número divergente ou não identificado. Confira as conexões na Gestão.',qr:null});try{await client.destroy()}catch{}client=null;return;}profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();try{const result=await presenceMonitor.start();if(!result.supported)console.warn('Indicadores de atividade indisponíveis nesta versão do WhatsApp Web.');}catch(error){console.warn('Indicadores de atividade:',error.message);}clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,300000);photoTimer.unref?.();});
+  client.on('message_ack',(msg,ack)=>{const id=serializedId(msg.id);if(!id)return;acknowledgments.set(id,Number(ack));if(acknowledgments.size>2000)acknowledgments.delete(acknowledgments.keys().next().value);for(const chat of conversations.values()){const m=chat.messages.find(m=>m.id===id);if(m){m.ack=Number(ack);departmentConnections?.receive(1,msg,chat).catch(()=>{});}}update({});});
   for(const event of ['group_join','group_leave','group_admin_changed','group_update'])client.on(event,notification=>{const id=String(notification.chatId||'');if(conversations.get(id)?.isGroup&&allowedChatIds.has(id))update({groupRevision:(state.groupRevision||0)+1});});
   client.on('message',storeMessage);client.on('message_create',storeMessage);
   client.on('disconnected',reason=>{reportManagementConnection('desconectado');presenceMonitor.stop();update({status:'desconectado',qr:null,error:'Sessão desconectada: '+String(reason)});});
@@ -192,9 +207,9 @@ app.whenReady().then(async()=>{
  window.on('maximize',()=>update({windowMaximized:true}));window.on('unmaximize',()=>update({windowMaximized:false}));
  window.webContents.setWindowOpenHandler(({url})=>{try{const parsed=new URL(url);if(['http:','https:'].includes(parsed.protocol)&&!parsed.username&&!parsed.password)shell.openExternal(parsed.href);}catch{}return {action:'deny'};});
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
- desktopNotifications=createDesktopNotifications({BrowserWindow,ipcMain,screen,getWindow:()=>window,onOpen:target=>{const chat=conversations.get(target.chatId);if(!window||window.isDestroyed()||!allowedChatIds.has(target.chatId)||!chat?.messages.some(message=>message.id===target.messageId))return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('wa-open-message',target);return true;}});
+ desktopNotifications=createDesktopNotifications({BrowserWindow,ipcMain,screen,getWindow:()=>window,onOpen:async target=>{await refreshLegacyAccess();if(target.attendanceId){if(!activeManagementUser||activeManagementUser.id!==target.userId)return false;const response=await managementRequest('/atendimentos/'+target.attendanceId);if(!response.ok)return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('management-open-message',target);return true;}if(managementConfigured&&!legacyAuthorized)return false;const chat=conversations.get(target.chatId);if(!window||window.isDestroyed()||!allowedChatIds.has(target.chatId)||!chat?.messages.some(message=>message.id===target.messageId))return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('wa-open-message',target);return true;}});
  registerCaptureHandlers({ipcMain,BrowserWindow,dialog,getWindow:()=>window,safeSender});
- try{await awaitServer();for(const id of await history.loadOmitted())omittedMessages.add(id);for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();startWhatsapp();}
+ try{await awaitServer();managementConfigured=!!(await fetch('http://127.0.0.1:8765/api/gestao/status').then(r=>r.json())).configurado;for(const id of await history.loadOmitted())omittedMessages.add(id);for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();departmentConnections=createDepartmentConnections({token:syncToken,dataPath:app.getPath('userData'),getPrimary:()=>client,reconnectPrimary:resetClient,disconnectPrimary:async()=>{await presenceMonitor.stop();if(client)await client.destroy();client=null;update({status:'desconectado',qr:null});},primarySent:storeMessage});await departmentConnections.start();const accessTimer=setInterval(pollOwnerNotifications,1500);accessTimer.unref();await refreshLegacyAccess();const configs=await fetch('http://127.0.0.1:8765/api/gestao/ponte/configuracao',{headers:{'X-Sync-Token':syncToken}}).then(r=>r.json());if(configs.find(c=>c.id===1)?.habilitada)startWhatsapp();}
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });
 ipcMain.handle('wa-state',e=>safeSender(e)?state:null);
@@ -274,7 +289,7 @@ ipcMain.handle('wa-contact-photos',async(e,phones)=>{
 });
 app.on('window-all-closed',()=>app.quit());
 let quitting=false;
-app.on('before-quit',event=>{clearInterval(photoTimer);if(historyReady&&!quitting){event.preventDefault();quitting=true;history.flush().finally(()=>{try{pythonProcess?.kill()}catch{}app.quit();});return;}try{pythonProcess?.kill()}catch{}});
+app.on('before-quit',event=>{clearInterval(photoTimer);if(historyReady&&!quitting){event.preventDefault();quitting=true;const retiring=client;client=null;Promise.allSettled([history.flush(),departmentConnections?.stop(),presenceMonitor.stop(),retiring?.destroy()]).finally(()=>{try{pythonProcess?.kill()}catch{}app.quit();});return;}try{pythonProcess?.kill()}catch{}});
 async function refreshProfilePhotos(){
  if(state.status!=='conectado'||state.syncProgress?.running||photoRefreshing)return;photoRefreshing=true;
  try{for(const phone of PHONES){profileCache.delete(phone);const alias=[...contactDirectory].find(([id,c])=>c.phone===phone&&id.endsWith('@lid'))?.[0]||phone+'@c.us';const photo=await profilePhoto(alias);for(const chat of conversations.values())if(chat.phone===phone&&photo)chat.photo=photo;}update({photoRefreshAt:Date.now()});}catch(error){console.error('Atualização automática de fotos:',error.message);}finally{photoRefreshing=false;}
@@ -282,7 +297,7 @@ async function refreshProfilePhotos(){
 
 ipcMain.handle('wa-mark-read',(e,id)=>{if(!safeSender(e))throw Error('Janela não autorizada');readActiveChatId=id?String(id):null;const chat=conversations.get(String(id));if(chat){chat.unreadCount=0;chat.markedUnread=false;update({});}return true;});
 ipcMain.handle('wa-save-contact',async(e,info)=>{if(!safeSender(e))throw Error('Janela não autorizada');if(state.status!=='conectado')throw Error('O contato foi salvo no aplicativo. Conecte o WhatsApp para sincronizá-lo com o celular.');const phone=String(info?.phone||'').replace(/\D/g,''),name=String(info?.name||'').trim();if(!/^\d{10,15}$/.test(phone)||!name||name.length>200)throw Error('Contato inválido');await client.saveOrEditAddressbookContact(phone,name,'',true);return {ok:true};});
-ipcMain.handle('window-action',(e,action)=>{if(!safeSender(e))throw Error('Janela não autorizada');if(action==='close')window.close();else if(action==='minimize')window.minimize();else if(action==='maximize'){if(window.isMaximized())window.unmaximize();else window.maximize();}return true;});
+ipcMain.handle('window-action',(e,action)=>{if(!baseSender(e))throw Error('Janela não autorizada');if(action==='close')window.close();else if(action==='minimize')window.minimize();else if(action==='maximize'){if(window.isMaximized())window.unmaximize();else window.maximize();}return true;});
 
 registerGroupHandlers({ipcMain,safeSender,getClient:()=>client,getState:()=>state});
 

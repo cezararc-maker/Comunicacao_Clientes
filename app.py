@@ -36,7 +36,7 @@ def init_db():
     if DB.exists():
         with closing(sqlite3.connect(DB)) as source:
             old=source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='wa_conversas'").fetchone()
-            migrated=source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='gestao_conexoes'").fetchone()
+            migrated=source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fluxo_config'").fetchone()
             if old and not migrated:
                 backup_dir=DB.parent / 'backups'
                 backup_dir.mkdir(exist_ok=True)

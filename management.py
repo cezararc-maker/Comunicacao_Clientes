@@ -1,6 +1,4 @@
-"""Additive test workspace: users, departments and audited attendance history.
-The current WhatsApp adapter remains single-connection; no fake extra sessions.
-"""
+"""Additive users, departments, connection-aware routing and audited histories."""
 import hashlib
 import hmac
 import json
@@ -12,6 +10,7 @@ import time
 from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 from werkzeug.security import generate_password_hash, check_password_hash
+from attendance_workflow import init_workflow, register_workflow
 
 DEPARTMENTS = ('Recepção','Rural','Pessoal','Fiscal','Contábil','Financeiro','Empresarial')
 COOKIE = 'gestao_sessao'
@@ -49,7 +48,7 @@ def init_management(db):
       iniciado REAL NOT NULL, encerrado REAL, status TEXT NOT NULL DEFAULT 'aberto',
       protocolo INTEGER UNIQUE, assunto TEXT NOT NULL, resumo TEXT NOT NULL DEFAULT '');
     CREATE UNIQUE INDEX IF NOT EXISTS atendimento_unico_aberto
-      ON atendimentos(conexao_id,conversa_id) WHERE status='aberto';
+      ON atendimentos(conexao_id,conversa_id) WHERE status IN ('aberto','pendencia','documentacao');
     CREATE INDEX IF NOT EXISTS atendimento_periodo ON atendimentos(iniciado,departamento_atual);
     CREATE TABLE IF NOT EXISTS atendimento_eventos (
       id INTEGER PRIMARY KEY, atendimento_id INTEGER NOT NULL REFERENCES atendimentos(id),
@@ -63,13 +62,15 @@ def init_management(db):
     ''')
     for number,name in enumerate(DEPARTMENTS,1):
         db.execute('INSERT OR IGNORE INTO departamentos(id,nome) VALUES (?,?)',(number,name))
+    init_workflow(db)
 
 
 def capture_open_attendances(db):
     # Only messages already in the local cache, after this attendance began.
     db.execute('''INSERT INTO atendimento_mensagens(atendimento_id,mensagem_id,timestamp,dados)
       SELECT a.id,m.id,m.timestamp,m.dados FROM atendimentos a JOIN wa_mensagens m ON m.conversa_id=a.conversa_id
-      WHERE a.status='aberto' AND a.conexao_id=1 AND m.timestamp>=a.iniciado
+      WHERE a.status IN ('aberto','pendencia','documentacao') AND a.conexao_id=1 AND m.timestamp>=a.iniciado
+      AND NOT EXISTS(SELECT 1 FROM fluxo_mensagens f WHERE f.conexao_id=1 AND f.mensagem_id=m.id AND f.atendimento_id IS NOT a.id)
       AND (SELECT estado FROM gestao_conexoes WHERE id=1)<>'divergente'
       AND NOT EXISTS(SELECT 1 FROM wa_omitidas o WHERE o.mensagem_id=m.id)
       ON CONFLICT(atendimento_id,mensagem_id) DO UPDATE SET dados=excluded.dados,timestamp=excluded.timestamp''')
@@ -110,7 +111,8 @@ def register_management(app, connect):
         db.execute('DELETE FROM gestao_sessoes WHERE expira<?',(time.time(),))
         db.execute('INSERT INTO gestao_sessoes VALUES (?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),user_id,time.time()+28800))
         response=jsonify(ok=True)
-        response.set_cookie(COOKIE,token,max_age=28800,httponly=True,samesite='Strict',path='/api/gestao')
+        response.delete_cookie(COOKIE,path='/api/gestao')
+        response.set_cookie(COOKIE,token,max_age=28800,httponly=True,samesite='Strict',path='/api')
         return response
 
     def admin():return g.user['perfil']=='admin'
@@ -122,11 +124,16 @@ def register_management(app, connect):
 
     @bp.before_request
     def authenticate():
-        if request.content_length and request.content_length>131072:return fail('Dados maiores que o permitido.',413)
+        limit=25*1024*1024 if request.path.endswith('/enviar') or '/ponte/' in request.path else 131072
+        if request.content_length and request.content_length>limit:return fail('Dados maiores que o permitido.',413)
         if request.host.split(':')[0] not in ('127.0.0.1','localhost','[::1]'):
             return fail('Host não autorizado.',403)
         if request.method!='GET' and request.headers.get('Origin') not in (None,'http://127.0.0.1:8765','http://localhost:8765'):
             return fail('Origem não autorizada.',403)
+        if '/api/gestao/ponte/' in request.path:
+            token=os.environ.get('WA_SYNC_TOKEN','')
+            if not token or not hmac.compare_digest(token,request.headers.get('X-Sync-Token','')):return fail('Ponte não autorizada.',403)
+            return
         if request.endpoint in ('gestao.setup','gestao.login','gestao.status','gestao.connection_state'):
             return
         token=request.cookies.get(COOKIE,'')
@@ -176,15 +183,16 @@ def register_management(app, connect):
     @bp.post('/sair')
     def logout():
         with connect() as db:db.execute('DELETE FROM gestao_sessoes WHERE token_hash=?',(hashlib.sha256(request.cookies.get(COOKIE,'').encode()).hexdigest(),))
-        response=jsonify(ok=True);response.delete_cookie(COOKIE,path='/api/gestao');return response
+        response=jsonify(ok=True);response.delete_cookie(COOKIE,path='/api');response.delete_cookie(COOKIE,path='/api/gestao');return response
 
     @bp.get('/contexto')
     def context():
         with connect() as db:
             deps=[dict(r) for r in db.execute('SELECT * FROM departamentos ORDER BY id')]
-            allowed=deps if admin() else [d for d in deps if d['id']==g.user['departamento_id']]
+            own=next((d for d in deps if d['id']==g.user['departamento_id']),None)
+            allowed=deps if admin() else [d for d in deps if d['id']==g.user['departamento_id'] or (g.user['triagem'] and own and d['conexao_id']==own['conexao_id'])]
             companies=[dict(r) for r in db.execute('SELECT id,nome,codigo FROM empresas ORDER BY nome')]
-            if not admin():
+            if not admin() and not g.user['triagem']:
                 ids=public_user(db,g.user)['empresas'];companies=[c for c in companies if c['id'] in ids]
             users=[dict(r) for r in db.execute('SELECT id,nome,departamento_id FROM usuarios ORDER BY nome')]
             if not admin():users=[u for u in users if u['departamento_id']==g.user['departamento_id']]
@@ -199,7 +207,7 @@ def register_management(app, connect):
             data=payload();name=clean(data.get('nome'),'o nome do departamento',80);active=1 if data.get('ativo',True) else 0
             if department_id:
                 if not db.execute('SELECT 1 FROM departamentos WHERE id=?',(department_id,)).fetchone():return fail('Departamento não encontrado.',404)
-                if not active and db.execute("SELECT 1 FROM usuarios WHERE departamento_id=? AND ativo=1 UNION SELECT 1 FROM atendimentos WHERE departamento_atual=? AND status='aberto'",(department_id,department_id)).fetchone():return fail('Realoque usuários e atendimentos antes de desativar o departamento.',409)
+                if not active and db.execute("SELECT 1 FROM usuarios WHERE departamento_id=? AND ativo=1 UNION SELECT 1 FROM atendimentos WHERE departamento_atual=? AND status IN ('aberto','pendencia','documentacao')",(department_id,department_id)).fetchone():return fail('Realoque usuários e atendimentos antes de desativar o departamento.',409)
                 db.execute('UPDATE departamentos SET nome=?,ativo=? WHERE id=?',(name,active,department_id))
             else:db.execute('INSERT INTO departamentos(nome) VALUES (?)',(name,))
             return jsonify(ok=True)
@@ -222,14 +230,21 @@ def register_management(app, connect):
             company_ids=list(set(ident(c) for c in companies))
             if company_ids and not dep:raise ValueError('Escolha o departamento para vincular responsabilidades.')
             if any(not db.execute('SELECT 1 FROM empresas WHERE id=?',(c,)).fetchone() for c in company_ids):raise ValueError('Empresa não encontrada.')
+            if active and any(db.execute('''SELECT 1 FROM usuario_empresas e JOIN usuarios u ON u.id=e.usuario_id
+              WHERE e.departamento_id=? AND e.empresa_id=? AND u.ativo=1 AND u.id<>?''',(dep,c,user_id or 0)).fetchone() for c in company_ids):
+                return fail('Uma dessas empresas já possui responsável ativo no departamento. Remova o vínculo anterior antes de atribuí-lo.',409)
             password=str(data.get('senha') or '')
             if password and (len(password)<8 or len(password)>128):raise ValueError('Use uma senha entre 8 e 128 caracteres.')
             if user_id:
                 old=db.execute('SELECT * FROM usuarios WHERE id=?',(user_id,)).fetchone()
                 if not old:return fail('Usuário não encontrado.',404)
-                if old['departamento_id']!=dep and db.execute("SELECT 1 FROM atendimentos WHERE usuario_id=? AND status='aberto'",(user_id,)).fetchone():return fail('Transfira ou encerre os atendimentos antes de trocar o departamento do usuário.',409)
+                pending=db.execute('''SELECT a.empresa_id FROM fluxo_transferencias t JOIN atendimentos a ON a.id=t.origem_id
+                  WHERE t.usuario_id=? AND t.iniciado_id IS NULL''',(user_id,)).fetchall()
+                if pending and (not active or old['departamento_id']!=dep or any(r['empresa_id'] and r['empresa_id'] not in company_ids for r in pending)):
+                    return fail('Há transferências aguardando início. Resolva essas pendências antes de desativar ou alterar os vínculos do usuário.',409)
+                if old['departamento_id']!=dep and db.execute("SELECT 1 FROM atendimentos WHERE usuario_id=? AND status IN ('aberto','pendencia','documentacao')",(user_id,)).fetchone():return fail('Transfira ou encerre os atendimentos antes de trocar o departamento do usuário.',409)
                 if old['perfil']=='admin' and old['ativo'] and (role!='admin' or not active) and db.execute("SELECT count(*) FROM usuarios WHERE perfil='admin' AND ativo=1").fetchone()[0]<=1:return fail('Mantenha ao menos um administrador ativo.',409)
-                if not active and db.execute("SELECT 1 FROM atendimentos WHERE usuario_id=? AND status='aberto'",(user_id,)).fetchone():return fail('Transfira ou encerre os atendimentos antes de desativar o usuário.',409)
+                if not active and db.execute("SELECT 1 FROM atendimentos WHERE usuario_id=? AND status IN ('aberto','pendencia','documentacao')",(user_id,)).fetchone():return fail('Transfira ou encerre os atendimentos antes de desativar o usuário.',409)
                 db.execute('UPDATE usuarios SET nome=?,login=?,perfil=?,departamento_id=?,ativo=?,triagem=? WHERE id=?',(name,username,role,dep,active,triage,user_id))
                 if password:db.execute('UPDATE usuarios SET senha_hash=? WHERE id=?',(generate_password_hash(password),user_id))
                 db.execute('DELETE FROM gestao_sessoes WHERE usuario_id=?',(user_id,))
@@ -307,8 +322,9 @@ def register_management(app, connect):
             for key,column in [('departamento_id','departamento_atual'),('entrada_id','departamento_entrada'),('usuario_id','usuario_id'),('empresa_id','empresa_id'),('conexao_id','conexao_id'),('protocolo','protocolo')]:
                 if request.args.get(key):filters.append('a.'+column+'=?');args.append(ident(request.args[key]))
             if request.args.get('status'):
-                if request.args['status'] not in ('aberto','encerrado'):raise ValueError('Status inválido.')
-                filters.append('a.status=?');args.append(request.args['status'])
+                if request.args['status'] not in ('aberto','encerrado','pendencia','documentacao','ativos'):raise ValueError('Status inválido.')
+                if request.args['status']=='ativos':filters.append("a.status IN ('aberto','pendencia','documentacao')")
+                else:filters.append('a.status=?');args.append(request.args['status'])
             for key,column in [('contato','conversa_id'),('numero','numero')]:
                 if request.args.get(key):filters.append('a.'+column+' LIKE ?');args.append('%'+request.args[key][:100]+'%')
             for key,op,end in [('inicio','>=',False),('fim','<',True)]:
@@ -330,7 +346,9 @@ def register_management(app, connect):
             messages=[json.loads(r[0]) for r in db.execute('SELECT dados FROM atendimento_mensagens WHERE atendimento_id=? ORDER BY timestamp,mensagem_id LIMIT 100 OFFSET ?',(aid,offset))]
             events=[dict(r) for r in db.execute('SELECT * FROM atendimento_eventos WHERE atendimento_id=? ORDER BY horario,id',(aid,))]
             for event in events:event['dados']=json.loads(event['dados'])
-            return jsonify(atendimento=a,mensagens=messages,eventos=events,total_mensagens=count,offset=offset)
+            photo=db.execute('SELECT foto FROM fluxo_contatos WHERE conexao_id=? AND conversa_id=?',(a['conexao_id'],a['conversa_id'])).fetchone()
+            presence=db.execute('SELECT tipo FROM fluxo_presenca WHERE conexao_id=? AND conversa_id=? AND expira>?',(a['conexao_id'],a['conversa_id'],time.time())).fetchone()
+            return jsonify(atendimento=a,mensagens=messages,eventos=events,total_mensagens=count,offset=offset,foto=photo[0] if photo else None,presenca=presence[0] if presence else None)
 
     @bp.post('/atendimentos/<int:aid>/encerrar')
     def finish(aid):
@@ -392,8 +410,32 @@ def register_management(app, connect):
                 a=attendance(db,aid)
                 if not a:return fail('Atendimento não autorizado.',403)
                 if not db.execute('SELECT 1 FROM atendimento_mensagens WHERE atendimento_id=? AND mensagem_id=?',(aid,mid)).fetchone():return fail('Mensagem fora deste atendimento.',403)
-            row=db.execute('SELECT dados FROM wa_midias WHERE mensagem_id=?',(mid,)).fetchone()
+            row=db.execute('SELECT dados FROM fluxo_midias WHERE conexao_id=? AND mensagem_id=?',(a['conexao_id'],mid)).fetchone() if aid is not None else None
+            if not row and (aid is None or a['conexao_id']==1):row=db.execute('SELECT dados FROM wa_midias WHERE mensagem_id=?',(mid,)).fetchone()
             if not row:return fail('Mídia ainda não disponível no cache local.',404)
             return jsonify(json.loads(row['dados']))
 
+    register_workflow(bp,connect,dict(fail=fail,payload=payload,ident=ident,clean=clean,admin=admin,attendance=attendance,audit=audit))
     app.register_blueprint(bp)
+
+    @app.before_request
+    def protect_legacy_api():
+        if not request.path.startswith('/api/') or request.path.startswith('/api/gestao/'):return
+        token=os.environ.get('WA_SYNC_TOKEN','')
+        if token and hmac.compare_digest(token,request.headers.get('X-Sync-Token','')):return
+        with connect() as db:
+            if not db.execute('SELECT 1 FROM usuarios LIMIT 1').fetchone():return
+            cookie=request.cookies.get(COOKIE,'')
+            user=db.execute('''SELECT u.* FROM usuarios u JOIN gestao_sessoes s ON s.usuario_id=u.id
+              WHERE s.token_hash=? AND s.expira>? AND u.ativo=1''',(hashlib.sha256(cookie.encode()).hexdigest(),time.time())).fetchone()
+            if not user:return fail('Entre com seu usuário.',401)
+            if request.method!='GET' and request.headers.get('Origin') not in (None,'http://127.0.0.1:8765','http://localhost:8765'):return fail('Origem não autorizada.',403)
+            if user['perfil']=='admin':return
+            if request.path=='/api/empresas' and request.method=='GET':
+                return jsonify([dict(r) for r in db.execute('SELECT * FROM empresas WHERE id IN (SELECT empresa_id FROM usuario_empresas WHERE usuario_id=? AND departamento_id=?) ORDER BY nome',(user['id'],user['departamento_id']))])
+            if request.path=='/api/contatos' and request.method=='GET':
+                rows=[dict(r) for r in db.execute('''SELECT DISTINCT c.* FROM contatos c JOIN vinculos v ON v.contato_id=c.id
+                  JOIN usuario_empresas e ON e.empresa_id=v.empresa_id WHERE e.usuario_id=? AND e.departamento_id=? ORDER BY c.nome''',(user['id'],user['departamento_id']))]
+                for row in rows:row['empresas']=[dict(r) for r in db.execute('''SELECT e.id,e.nome,e.codigo,v.funcao FROM empresas e JOIN vinculos v ON v.empresa_id=e.id WHERE v.contato_id=? AND e.id IN (SELECT empresa_id FROM usuario_empresas WHERE usuario_id=? AND departamento_id=?)''',(row['id'],user['id'],user['departamento_id']))]
+                return jsonify(rows)
+            return fail('Esta operação é restrita ao administrador. Utilize seus atendimentos na Gestão.',403)
