@@ -6,6 +6,7 @@ const {validateMedia,mediaLabel}=require('./media_messages');
 const {resolvePhoto}=require('./profile_photos');
 const {replyContext}=require('./reply_context');
 const {createPresenceMonitor}=require('./chat_presence');
+const {connectionOptions,connectionError,initializeConnection}=require('./whatsapp_connection');
 
 // One LocalAuth client per connection. Departments never create duplicate clients.
 function createDepartmentConnections({token,dataPath,getPrimary,reconnectPrimary,disconnectPrimary,primarySent,fetchApi=fetch,makeClient,qrCode}){
@@ -34,7 +35,7 @@ function createDepartmentConnections({token,dataPath,getPrimary,reconnectPrimary
   if(starting.has(id)||clients.has(id))return;
   starting.add(id);await state(id,'aguardando');
   try{
-   const factory=makeClient||((options)=>{const {Client,LocalAuth}=require('whatsapp-web.js');return new Client({authStrategy:new LocalAuth(options),puppeteer:{headless:true,args:['--no-sandbox','--disable-setuid-sandbox']}});});
+   const factory=makeClient||((options)=>{const {Client,LocalAuth}=require('whatsapp-web.js');return new Client({...connectionOptions(),authStrategy:new LocalAuth(options),puppeteer:{headless:true,args:['--no-sandbox','--disable-setuid-sandbox']}});});
    const c=factory({clientId:'departamento-'+id,dataPath:path.join(dataPath,'wa-departamentos')});clients.set(id,c);
    c.on('qr',async qr=>{if(clients.get(id)!==c)return;try{const image=await (qrCode||require('qrcode').toDataURL)(qr,{margin:2,width:320});if(clients.get(id)===c)await state(id,'qr',{qr:image});}catch(e){console.warn(e.message);}});
    c.on('ready',async()=>{if(clients.get(id)!==c)return;try{await installWebCompatibility(c);if(clients.get(id)!==c)return;await state(id,'conectado',{numero:serializedId(c.info?.wid).split('@')[0]});if(c.pupPage){const monitor=createPresenceMonitor({getClient:()=>c,getChats:()=>PHONES.map(p=>p+'@c.us'),onChange:values=>api('presenca',{conexao_id:id,valores:values}).catch(()=>{})});monitors.set(id,monitor);await monitor.start();}}catch(e){if(clients.get(id)===c)await disconnect(id);console.warn(e.message);}});
@@ -42,7 +43,7 @@ function createDepartmentConnections({token,dataPath,getPrimary,reconnectPrimary
    c.on('disconnected',()=>{if(clients.get(id)!==c)return;clients.delete(id);monitors.get(id)?.stop().catch(()=>{});monitors.delete(id);state(id,'desconectado').catch(()=>{});});
    const incoming=msg=>{if(clients.get(id)===c)receive(id,msg).catch(e=>console.warn('Atendimento:',e.message));};
    c.on('message',incoming);c.on('message_create',incoming);c.on('message_ack',incoming);
-   c.initialize().catch(async error=>{if(clients.get(id)===c){clients.delete(id);await state(id,'erro',{erro:error.message});}}).finally(()=>starting.delete(id));
+   initializeConnection(c).then(async()=>{if(clients.get(id)!==c)try{await c.destroy()}catch{}}).catch(async error=>{if(clients.get(id)===c){clients.delete(id);await state(id,'erro',{erro:connectionError(error)});try{await c.destroy()}catch{}}}).finally(()=>starting.delete(id));
   }catch(error){clients.delete(id);await state(id,'erro',{erro:error.message});throw error;}
   finally{starting.delete(id);}
  }

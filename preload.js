@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
  batchMessages:info=>ipcRenderer.invoke('wa-batch-messages',info),
  getState:()=>ipcRenderer.invoke('wa-state'),
  reconnect:()=>ipcRenderer.invoke('wa-reconnect'),
+ disconnect:()=>ipcRenderer.invoke('wa-disconnect'),
  syncContacts:()=>ipcRenderer.invoke('wa-sync'),
  sendMessage:info=>ipcRenderer.invoke('wa-send',info),
  prepareDrop:info=>ipcRenderer.invoke('wa-prepare-drop',info),

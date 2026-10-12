@@ -60,3 +60,9 @@ Texto, respostas, áudio gravado, anexos, mídia recebida e reutilização de fi
 
 ### Correção 0.19.1 — conexão
 Em Conversas, Conexão e QR Code e Reconectar WhatsApp abrem o painel da conexão correta. O administrador seleciona o número e conecta pelo QR; sem login, o aplicativo abre o acesso à gestão. Atendentes consultam o estado do próprio número, mas não reiniciam sessões compartilhadas. O indicador consulta a conexão mesmo sem atendimento aberto e acompanha QR, carregamento, conectado e erros. A reconexão utiliza a fila autorizada de conexões, preservando os arquivos de autenticação e o histórico.
+
+
+### Correção 0.19.2 — carregamento e desconexão
+A inicialização utiliza a identificação atual do Chromium e ignora o cache de código/Service Worker durante o carregamento, preservando os arquivos de sessão. A navegação e a inicialização têm prazo máximo; falhas de rede ou autenticação são apresentadas no painel de conexão e registradas em `%APPDATA%\comunicacao-clientes\diagnostics\whatsapp-connection.log`. Pedidos repetidos não fingem reiniciar uma inicialização em andamento.
+
+No painel Conexão e QR Code, Desconectar aplicativo informa os departamentos afetados e pede confirmação. A desconexão interrompe inclusive uma inicialização travada, sem logout, exclusão de arquivos de autenticação ou limpeza do histórico. Conectar / reconectar reativa o número quando necessário. Apenas administradores controlam sessões compartilhadas.

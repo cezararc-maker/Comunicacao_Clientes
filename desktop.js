@@ -20,9 +20,10 @@ const {registerBatchHandlers}=require('./batch_messages');const omittedMessages=
 const {registerMediaHandlers}=require('./media_ipc');
 const {registerCaptureHandlers}=require('./capture_conversation');
 const {createDepartmentConnections}=require('./department_connections');
+const {connectionOptions,connectionError,initializeConnection}=require('./whatsapp_connection');
 let departmentConnections=null,legacyAuthorized=false,managementConfigured=false;
 let window, pythonProcess, client;
-let restarting=false, initializing=false,syncJob=null;
+let restarting=false, initializing=false,syncJob=null,connectionGeneration=0;
 const allowedChatIds=new Set(PHONES.map(p=>p+'@c.us'));
 let photoDiagnostics={};
 const syncToken=crypto.randomBytes(32).toString('hex');
@@ -172,32 +173,34 @@ async function performScopedSync(){
  }catch(error){console.error('Sincronização de teste:',error.message);update({sync:'parcial',error:'A sincronização foi interrompida. Verifique a conexão e tente novamente.',syncProgress:{running:false,completed,total,percent:Math.round(completed/total*100),label:'Sincronização interrompida'}});return {ok:false,message:'A sincronização foi interrompida. Tente novamente.'};}
 }
 async function resetClient(){
- if(initializing||restarting)return;
+ if(initializing||restarting)throw Error('A conexão já está sendo iniciada. Aguarde ou use Desconectar para interromper.');
  restarting=true;await presenceMonitor.stop();update({status:'reconectando',qr:null,error:null});
  try{if(client)await client.destroy()}catch(e){console.error('Falha ao destruir sessão:',e.message)}
  client=null;restarting=false;startWhatsapp();
 }
-async function reportManagementConnection(status,number=''){try{const response=await fetch('http://127.0.0.1:8765/api/gestao/ponte/estado',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({conexao_id:1,estado:status,numero:number})});if(!response.ok){const result=await response.json();console.warn('Gestão de conexões:',result.erro);return false;}return true;}catch(error){console.warn('Gestão de conexões:',error.message);return false;}}
+function logConnection(detail){try{const dir=path.join(app.getPath('userData'),'diagnostics');fs.mkdirSync(dir,{recursive:true});fs.appendFileSync(path.join(dir,'whatsapp-connection.log'),JSON.stringify({time:new Date().toISOString(),...detail})+'\n');}catch{}}
+async function disconnectWhatsapp(){connectionGeneration++;initializing=false;restarting=false;clearInterval(photoTimer);const previous=client;client=null;await presenceMonitor.stop();if(previous)await previous.destroy();update({status:'desconectado',qr:null,error:null});}
+async function reportManagementConnection(status,number='',patch={}){try{const response=await fetch('http://127.0.0.1:8765/api/gestao/ponte/estado',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({conexao_id:1,estado:status,numero:number,...patch})});if(!response.ok){const result=await response.json();console.warn('Gestão de conexões:',result.erro);return false;}return true;}catch(error){console.warn('Gestão de conexões:',error.message);return false;}}
 async function startWhatsapp(){
  if(initializing)return;
- initializing=true;
+ const generation=++connectionGeneration;initializing=true;let activeClient;
  update({status:'iniciando',qr:null,error:null});
  await reportManagementConnection('aguardando');
  try {
   const { Client, LocalAuth }=require('whatsapp-web.js');
-  client=new Client({authStrategy:new LocalAuth({dataPath:path.join(app.getPath('userData'),'wa-session')}),puppeteer:{headless:true,args:['--no-sandbox','--disable-setuid-sandbox']}});
-  client.on('qr',async q=>{ try { const qr=await QRCode.toDataURL(q,{margin:2,width:320});update({status:'qr',qr,error:null});await fetch('http://127.0.0.1:8765/api/gestao/ponte/estado',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({conexao_id:1,estado:'qr',qr})}); } catch(e){update({status:'erro',error:e.message})} });
-  client.on('authenticated',()=>update({status:'autenticado',qr:null,error:null}));
-  client.on('loading_screen',(percent,message)=>update({connectionLoading:Number(percent)||0,connectionMessage:'Carregando WhatsApp'}));
-  client.on('ready',async()=>{await installWebCompatibility(client);const accepted=await reportManagementConnection('conectado',serializedId(client.info?.wid).split('@')[0]);if(!accepted){update({status:'erro',error:'Número divergente ou não identificado. Confira as conexões na Gestão.',qr:null});try{await client.destroy()}catch{}client=null;return;}profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();try{const result=await presenceMonitor.start();if(!result.supported)console.warn('Indicadores de atividade indisponíveis nesta versão do WhatsApp Web.');}catch(error){console.warn('Indicadores de atividade:',error.message);}clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,300000);photoTimer.unref?.();});
+  activeClient=new Client({...connectionOptions(),authStrategy:new LocalAuth({dataPath:path.join(app.getPath('userData'),'wa-session')}),puppeteer:{headless:true,args:['--no-sandbox','--disable-setuid-sandbox']}});client=activeClient;const current=()=>!restarting&&client===activeClient&&generation===connectionGeneration;
+  client.on('qr',async q=>{if(!current())return;try { const qr=await QRCode.toDataURL(q,{margin:2,width:320});if(!current())return;update({status:'qr',qr,error:null});await fetch('http://127.0.0.1:8765/api/gestao/ponte/estado',{method:'POST',headers:{'Content-Type':'application/json','X-Sync-Token':syncToken},body:JSON.stringify({conexao_id:1,estado:'qr',qr})}); } catch(e){update({status:'erro',error:e.message})} });
+  client.on('authenticated',()=>{if(current()){update({status:'autenticado',qr:null,error:null});reportManagementConnection('autenticado');}});
+  client.on('loading_screen',(percent,message)=>{if(current())update({connectionLoading:Number(percent)||0,connectionMessage:'Carregando WhatsApp'});});
+  client.on('ready',async()=>{if(!current())return;await installWebCompatibility(activeClient);if(!current())return;const accepted=await reportManagementConnection('conectado',serializedId(client.info?.wid).split('@')[0]);if(!current())return;if(!accepted){update({status:'erro',error:'Número divergente ou não identificado. Confira as conexões na Gestão.',qr:null});try{await client.destroy()}catch{}client=null;return;}profileCache.clear();update({status:'conectado',qr:null,error:null});await syncContactsAndChats();try{const result=await presenceMonitor.start();if(!result.supported)console.warn('Indicadores de atividade indisponíveis nesta versão do WhatsApp Web.');}catch(error){console.warn('Indicadores de atividade:',error.message);}clearInterval(photoTimer);photoTimer=setInterval(refreshProfilePhotos,300000);photoTimer.unref?.();});
   client.on('message_ack',(msg,ack)=>{const id=serializedId(msg.id);if(!id)return;acknowledgments.set(id,Number(ack));if(acknowledgments.size>2000)acknowledgments.delete(acknowledgments.keys().next().value);for(const chat of conversations.values()){const m=chat.messages.find(m=>m.id===id);if(m){m.ack=Number(ack);departmentConnections?.receive(1,msg,chat).catch(()=>{});}}update({});});
   for(const event of ['group_join','group_leave','group_admin_changed','group_update'])client.on(event,notification=>{const id=String(notification.chatId||'');if(conversations.get(id)?.isGroup&&allowedChatIds.has(id))update({groupRevision:(state.groupRevision||0)+1});});
-  client.on('message',storeMessage);client.on('message_create',storeMessage);
-  client.on('disconnected',reason=>{reportManagementConnection('desconectado');presenceMonitor.stop();update({status:'desconectado',qr:null,error:'Sessão desconectada: '+String(reason)});});
-  client.on('auth_failure',msg=>{presenceMonitor.stop();update({status:'erro',error:'Falha de autenticação: '+msg,qr:null});});
-  await client.initialize();
- }catch(e){update({status:'erro',error:e.message,qr:null})}
- finally{initializing=false}
+  client.on('message',msg=>{if(current())storeMessage(msg);});client.on('message_create',msg=>{if(current())storeMessage(msg);});
+  client.on('disconnected',reason=>{if(!current())return;reportManagementConnection('desconectado');presenceMonitor.stop();update({status:'desconectado',qr:null,error:'Sessão desconectada: '+String(reason)});});
+  client.on('auth_failure',msg=>{if(!current())return;const error='Falha de autenticação: '+String(msg);logConnection({phase:'auth_failure',error});reportManagementConnection('erro','',{erro:error});presenceMonitor.stop();update({status:'erro',error,qr:null});});
+  await initializeConnection(activeClient,{onDiagnostic:logConnection});if(!current())try{await activeClient.destroy()}catch{}
+ }catch(e){if(generation!==connectionGeneration)return;const error=connectionError(e);logConnection({phase:'error',error});console.error('Conexão WhatsApp:',error);update({status:'erro',error,qr:null});await reportManagementConnection('erro','',{erro:error});if(client===activeClient){client=null;try{await activeClient?.destroy()}catch{}}}
+ finally{if(generation===connectionGeneration)initializing=false}
 }
 app.whenReady().then(async()=>{
  startPython();
@@ -209,12 +212,13 @@ app.whenReady().then(async()=>{
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
  desktopNotifications=createDesktopNotifications({BrowserWindow,ipcMain,screen,getWindow:()=>window,onOpen:async target=>{await refreshLegacyAccess();if(target.attendanceId){if(!activeManagementUser||activeManagementUser.id!==target.userId)return false;const response=await managementRequest('/atendimentos/'+target.attendanceId);if(!response.ok)return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('management-open-message',target);return true;}if(managementConfigured&&!legacyAuthorized)return false;const chat=conversations.get(target.chatId);if(!window||window.isDestroyed()||!allowedChatIds.has(target.chatId)||!chat?.messages.some(message=>message.id===target.messageId))return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('wa-open-message',target);return true;}});
  registerCaptureHandlers({ipcMain,BrowserWindow,dialog,getWindow:()=>window,safeSender});
- try{await awaitServer();managementConfigured=!!(await fetch('http://127.0.0.1:8765/api/gestao/status').then(r=>r.json())).configurado;for(const id of await history.loadOmitted())omittedMessages.add(id);for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();departmentConnections=createDepartmentConnections({token:syncToken,dataPath:app.getPath('userData'),getPrimary:()=>client,reconnectPrimary:resetClient,disconnectPrimary:async()=>{await presenceMonitor.stop();if(client)await client.destroy();client=null;update({status:'desconectado',qr:null});},primarySent:storeMessage});await departmentConnections.start();const accessTimer=setInterval(pollOwnerNotifications,1500);accessTimer.unref();await refreshLegacyAccess();const configs=await fetch('http://127.0.0.1:8765/api/gestao/ponte/configuracao',{headers:{'X-Sync-Token':syncToken}}).then(r=>r.json());if(configs.find(c=>c.id===1)?.habilitada)startWhatsapp();}
+ try{await awaitServer();managementConfigured=!!(await fetch('http://127.0.0.1:8765/api/gestao/status').then(r=>r.json())).configurado;for(const id of await history.loadOmitted())omittedMessages.add(id);for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();departmentConnections=createDepartmentConnections({token:syncToken,dataPath:app.getPath('userData'),getPrimary:()=>client,reconnectPrimary:resetClient,disconnectPrimary:disconnectWhatsapp,primarySent:storeMessage});await departmentConnections.start();const accessTimer=setInterval(pollOwnerNotifications,1500);accessTimer.unref();await refreshLegacyAccess();const configs=await fetch('http://127.0.0.1:8765/api/gestao/ponte/configuracao',{headers:{'X-Sync-Token':syncToken}}).then(r=>r.json());if(configs.find(c=>c.id===1)?.habilitada)startWhatsapp();}
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });
 ipcMain.handle('wa-state',e=>safeSender(e)?state:null);
 registerMediaHandlers({ipcMain,dialog,getWindow:()=>window,safeSender,getClient:()=>client,getState:()=>state,getMessage:id=>mediaMessages.get(id),storeMessage,readMedia:history.readMedia,saveMedia:history.saveMedia});
 ipcMain.handle('wa-reconnect',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(syncJob)return {ok:false,message:'Aguarde a sincronização terminar antes de reconectar.'};await resetClient();return {ok:true}});
+ipcMain.handle('wa-disconnect',async e=>{if(!safeSender(e))throw Error('Janela não autorizada');await disconnectWhatsapp();await reportManagementConnection('desconectado');return {ok:true};});
 ipcMain.handle('wa-sync',async e=>{if(!safeSender(e))throw new Error('Janela não autorizada');if(state.status!=='conectado')return {ok:false,message:'Aguarde o WhatsApp conectar. Se houver QR Code, escaneie-o primeiro.'};return await syncContactsAndChats();});
 ipcMain.handle('wa-send',async(e,info)=>{
  if(!safeSender(e))throw new Error('Janela não autorizada');

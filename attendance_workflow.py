@@ -363,7 +363,7 @@ def register_workflow(bp, connect, api):
     @bp.post('/ponte/estado')
     def bridge_state():
         data=payload();cid=ident(data.get('conexao_id'));number=re.sub(r'\D','',str(data.get('numero','')));state=data.get('estado')
-        if state not in ('conectado','desconectado','aguardando','qr','erro'):raise ValueError('Estado inválido.')
+        if state not in ('conectado','desconectado','aguardando','autenticado','qr','erro'):raise ValueError('Estado inválido.')
         with connect() as db:
             db.execute('BEGIN IMMEDIATE');old=db.execute('SELECT * FROM gestao_conexoes WHERE id=?',(cid,)).fetchone()
             if not old:raise ValueError('Conexão inexistente.')
