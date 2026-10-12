@@ -137,6 +137,10 @@ def register_workflow(bp, connect, api):
             dep=departments[0] if len(departments)==1 else None
             company=companies[0] if len(companies)==1 else None
             user=owner(db,dep,company) if dep else None
+            if company and not dep:
+                candidates=[(candidate,owner(db,candidate,company)) for candidate in departments]
+                candidates=[(candidate,responsible) for candidate,responsible in candidates if responsible]
+                if len(candidates)==1:dep,user=candidates[0]
             if send_context:
                 dep=send_context['departamento_id'];company=send_context.get('empresa_id');user=owner(db,dep,company) or db.execute('SELECT * FROM usuarios WHERE id=?',(send_context['usuario_id'],)).fetchone()
             if user:a=make_attendance(db,conn,chat,name,dep,company,user,stamp,send_context.get('assunto','Atendimento via WhatsApp') if send_context else 'Atendimento via WhatsApp',send_context.get('origem_id') if send_context else None)
@@ -196,29 +200,52 @@ def register_workflow(bp, connect, api):
             db.execute('UPDATE gestao_conexoes SET habilitada=? WHERE id=?',(int(action=='conectar'),cid))
             return queue(db,action,cid,{})
 
+    def pending_owner(db,conn,companies):
+        if not companies:return None
+        departments=[r[0] for r in db.execute('SELECT id FROM departamentos WHERE ativo=1 AND conexao_id=?',(conn,))]
+        resolved=[]
+        for company in companies:
+            candidates=[owner(db,dep,company) for dep in departments]
+            candidates=[candidate for candidate in candidates if candidate]
+            if len(candidates)!=1:return None
+            resolved.append(candidates[0]['id'])
+        return resolved[0] if len(set(resolved))==1 else None
+
+    def triage_rows(db):
+        args=[];where=''
+        if not admin():
+            where=' AND m.conexao_id IN (SELECT conexao_id FROM departamentos WHERE id=? AND ativo=1)';args=[g.user['departamento_id']]
+        rows=[dict(r) for r in db.execute("""SELECT m.conexao_id,m.conversa_id,max(m.nome) nome,max(m.telefone) telefone,
+          count(*) mensagens,min(m.timestamp) inicio,
+          max(CASE WHEN coalesce(json_extract(m.dados,'$.fromMe'),0)=0 THEN m.rowid ELSE 0 END) aviso_id
+          FROM fluxo_mensagens m WHERE atendimento_id IS NULL"""+where+
+          ' GROUP BY m.conexao_id,m.conversa_id HAVING aviso_id>0 ORDER BY inicio LIMIT 100',args)]
+        for row in rows:
+            row['empresas']=company_for(db,row['telefone'])
+            row['responsavel_id']=pending_owner(db,row['conexao_id'],row['empresas'])
+            row['notificar']=row['responsavel_id']==g.user['id'] if row['responsavel_id'] else bool(admin() or g.user['triagem'])
+            latest=db.execute("SELECT dados FROM fluxo_mensagens WHERE rowid=?",(row['aviso_id'],)).fetchone()
+            message=json.loads(latest[0]);row['previa']=str(message.get('body') or message.get('mediaLabel') or 'Nova mensagem')[:300]
+        return rows if admin() or g.user['triagem'] else [row for row in rows if row['responsavel_id']==g.user['id']]
+
     @bp.get('/triagem')
     def triage():
-        if not admin() and not g.user['triagem']:return fail('Triagem não autorizada.',403)
         with connect() as db:
-            args=[];where=''
-            if not admin():
-                where=' AND m.conexao_id IN (SELECT conexao_id FROM departamentos WHERE id=? AND ativo=1)';args=[g.user['departamento_id']]
-            rows=[dict(r) for r in db.execute('''SELECT m.conexao_id,m.conversa_id,max(m.nome) nome,max(m.telefone) telefone,
-              count(*) mensagens,min(m.timestamp) inicio FROM fluxo_mensagens m WHERE atendimento_id IS NULL'''+where+
-              ' GROUP BY m.conexao_id,m.conversa_id ORDER BY inicio LIMIT 100',args)]
-            for row in rows:row['empresas']=company_for(db,row['telefone'])
+            rows=triage_rows(db)
+            if not admin() and not g.user['triagem'] and not rows:return fail('Triagem não autorizada.',403)
             return jsonify(rows)
 
     @bp.post('/triagem/classificar')
     def classify():
-        if not admin() and not g.user['triagem']:return fail('Triagem não autorizada.',403)
         data=payload();conn=ident(data.get('conexao_id'));dep=ident(data.get('departamento_id'));company=ident(data.get('empresa_id'));chat=clean(data.get('conversa_id'),'a conversa',100)
         with connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            if not admin() and not g.user['triagem'] and not any(row['conexao_id']==conn and row['conversa_id']==chat for row in triage_rows(db)):return fail('Fila não autorizada.',403)
             if not admin() and not db.execute('SELECT 1 FROM departamentos WHERE id=? AND conexao_id=?',(g.user['departamento_id'],conn)).fetchone():return fail('Fila não autorizada.',403)
             if not db.execute('SELECT 1 FROM departamentos WHERE id=? AND conexao_id=? AND ativo=1',(dep,conn)).fetchone():raise ValueError('Departamento fora desta conexão.')
             user=owner(db,dep,company)
             if not user:return fail('Defina um único responsável ativo para essa empresa no departamento.',409)
+            if not admin() and not g.user['triagem'] and user['id']!=g.user['id']:return fail('Responsável fora da sua permissão.',403)
             row=db.execute('SELECT * FROM fluxo_mensagens WHERE conexao_id=? AND conversa_id=? AND atendimento_id IS NULL ORDER BY timestamp LIMIT 1',(conn,chat)).fetchone()
             if not row:return fail('Fila já classificada.',409)
             if db.execute("SELECT 1 FROM atendimentos WHERE conexao_id=? AND conversa_id=? AND status IN ('aberto','pendencia','documentacao')",(conn,chat)).fetchone():return fail('Já existe atendimento ativo.',409)
@@ -271,7 +298,7 @@ def register_workflow(bp, connect, api):
             notices=[dict(r) for r in db.execute('''SELECT n.*,a.contato_nome,a.empresa_nome FROM fluxo_notificacoes n JOIN atendimentos a ON a.id=n.atendimento_id
               WHERE n.usuario_id=? AND n.lida=0 AND a.usuario_id=? AND a.departamento_atual IS ? ORDER BY n.criado DESC LIMIT 50''',
               (g.user['id'],g.user['id'],g.user['departamento_id']))] if not admin() else [dict(r) for r in db.execute('''SELECT n.*,a.contato_nome,a.empresa_nome FROM fluxo_notificacoes n JOIN atendimentos a ON a.id=n.atendimento_id WHERE n.usuario_id=? AND n.lida=0 ORDER BY n.criado DESC LIMIT 50''',(g.user['id'],))]
-            return jsonify(transferencias=transfers,mensagens=notices)
+            return jsonify(transferencias=transfers,mensagens=notices,triagem=triage_rows(db))
 
     @bp.post('/avisos/<int:nid>/ler')
     def read_notice(nid):
@@ -312,7 +339,12 @@ def register_workflow(bp, connect, api):
         if company and not db.execute('SELECT 1 FROM empresas WHERE id=?',(company,)).fetchone():raise ValueError('Empresa inexistente.')
         if not c or c['estado']!='conectado' or not c['numero'] or not c['habilitada']:raise ValueError('Número indisponível. A mensagem digitada será preservada.')
         if not aid and db.execute("SELECT 1 FROM atendimentos WHERE conexao_id=? AND conversa_id=? AND status IN ('aberto','pendencia','documentacao')",(conn,chat)).fetchone():raise ValueError('Já existe atendimento ativo. Abra a conversa na lista.')
-        return dict(data,conexao_id=conn,conversa_id=chat,departamento_id=dep,empresa_id=company,usuario_id=user['id'],origem_id=origin,numero=c['numero'])
+        known=db.execute('SELECT telefone FROM fluxo_mensagens WHERE conexao_id=? AND conversa_id=? ORDER BY timestamp DESC LIMIT 1',(conn,chat)).fetchone()
+        phone=known['telefone'] if known else chat.split('@')[0]
+        if chat.endswith('@lid') and not known:
+            cached=db.execute('SELECT dados FROM wa_conversas WHERE id=?',(chat,)).fetchone()
+            if cached:phone=str(json.loads(cached[0]).get('phone') or phone)
+        return dict(data,conexao_id=conn,conversa_id=chat,telefone=phone,departamento_id=dep,empresa_id=company,usuario_id=user['id'],origem_id=origin,numero=c['numero'])
 
     @bp.post('/enviar')
     def send():
@@ -450,7 +482,7 @@ def register_workflow(bp, connect, api):
                     quoted=db.execute('SELECT dados FROM atendimento_mensagens WHERE atendimento_id=? AND mensagem_id=?',(content['atendimento_id'],str(content['resposta_id']))).fetchone()
                     if quoted:
                         original=json.loads(quoted[0]);message['reply']=dict(id=original['id'],body=original.get('body') or original.get('mediaLabel'),author='Você' if original.get('fromMe') else original.get('authorName') or 'Contato')
-                aid=ingest(db,dict(conexao_id=row['conexao_id'],conversa_id=content['conversa_id'],telefone=content['conversa_id'].split('@')[0],nome=content.get('nome') or content['conversa_id'],mensagem=message),content)
+                aid=ingest(db,dict(conexao_id=row['conexao_id'],conversa_id=content['conversa_id'],telefone=content.get('telefone') or content['conversa_id'].split('@')[0],nome=content.get('nome') or content['conversa_id'],mensagem=message),content)
                 result=dict(result,atendimento_id=aid)
                 if content.get('transferencia_id') and aid:db.execute('UPDATE fluxo_transferencias SET iniciado_id=? WHERE id=?',(aid,content['transferencia_id']))
             db.execute('UPDATE fluxo_comandos SET estado=?,resultado=?,dados=? WHERE id=?',

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Comunicação Clientes v0.19.2</title>
+<title>Comunicação Clientes v0.19.3</title>
 <style>
 :root{font-family:Segoe UI,Arial,sans-serif;color:#152d2b;background:#eef2f1}
 *{box-sizing:border-box}body{margin:0}header{background:#075e54;color:white;padding:18px 24px;font-size:22px;font-weight:700}
@@ -106,7 +106,7 @@ nav .rail-button.active{background:#dceee7;color:#076c5a}
 <button class="rail-button" onclick="tab('empresas')" id="menu-empresas" title="Empresas" aria-label="Empresas"><svg class="ui-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h1m4 0h1M9 11h1m4 0h1M9 15h1m4 0h1M10 21v-3h4v3"/></svg><span>Empresas</span></button>
 <button class="rail-button" onclick="tab('contatos')" id="menu-contatos" title="Contatos e vínculos" aria-label="Contatos"><img class="nav-icon contact-icon" src="/static/icons/contacts.webp" alt=""><span>Contatos</span></button>
 <button class="rail-button" onclick="tab('importar')" id="menu-importar" title="Importar Excel" aria-label="Importar Excel"><svg class="ui-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg><span>Importar</span></button>
-<button class="rail-button" onclick="tab('gestao')" id="menu-gestao" title="Históricos, usuários e departamentos" aria-label="Gestão"><img class="nav-icon" src="/static/icons/actions/contatos-vinculos.svg" alt=""><span>Gestão</span></button></nav><div class="rail-footer" title="Versão 0.19.2">v0.19.2</div></aside>
+<button class="rail-button" onclick="tab('gestao')" id="menu-gestao" title="Históricos, usuários e departamentos" aria-label="Gestão"><img class="nav-icon" src="/static/icons/actions/contatos-vinculos.svg" alt=""><span>Gestão</span></button></nav><div class="rail-footer" title="Versão 0.19.3">v0.19.3</div></aside>
 <section class="workspace"><div id="feedback"></div>
 <section id="view-gestao" class="management-view hidden"></section><div id="view-whatsapp" class="chat-layout">
 <div class="chat-sidebar"><div class="chat-list-header"><div><h2>Conversas</h2><small>Central de atendimento</small></div><div class="header-actions"><button class="icon-button settings-trigger" onclick="toggleSettings()" aria-haspopup="menu" aria-expanded="false" aria-label="Abrir configurações" title="Configurações"><svg class="ui-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 3 1 2h4l1-2 3 2-1 2 2 3h2v4h-2l-2 3 1 2-3 2-1-2h-4l-1 2-3-2 1-2-2-3H3v-4h2l2-3-1-2Z"/><circle cx="12" cy="12" r="3"/></svg></button><button class="icon-button new-chat-button" onclick="newGroup()" title="Criar grupo" aria-label="Criar grupo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div></div>
@@ -249,4 +249,4 @@ renderWA();waStartup();loadPins();
 tab('whatsapp');
 
 atualizar().then(pesquisar);
-</script><script src="/static/management_ui.js"></script><link rel="stylesheet" href="/static/attendance.css"><script src="/static/attendance_ui.js"></script><link rel="stylesheet" href="/static/attendance_flow.css"><script src="/static/attendance_flow_ui.js"></script><script src="/static/attendance_connection_ui.js"></script><script src="/static/attendance_conversations.js"></script></body></html>
+</script><script src="/static/management_ui.js"></script><link rel="stylesheet" href="/static/attendance.css"><script src="/static/attendance_ui.js"></script><link rel="stylesheet" href="/static/attendance_flow.css"><script src="/static/attendance_flow_ui.js"></script><script src="/static/attendance_connection_ui.js"></script><script src="/static/attendance_conversations.js"></script><script src="/static/attendance_triage_ui.js"></script></body></html>

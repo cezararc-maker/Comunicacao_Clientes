@@ -10,6 +10,8 @@ with tempfile.TemporaryDirectory() as folder:
   db.execute("INSERT INTO empresas VALUES (1,'001','Empresa de Teste','CPF','12345678901')")
   db.execute("INSERT INTO contatos VALUES (1,'Contato de Teste','+5567996373431')")
   db.execute("INSERT INTO vinculos VALUES (1,1,'Financeiro')")
+  db.execute("INSERT INTO empresas VALUES (2,'002','Outra Empresa de Teste','CPF','22222222222')")
+  db.execute("INSERT INTO vinculos(empresa_id,contato_id,funcao) VALUES (2,1,'Outro vínculo')")
   db.execute('INSERT INTO wa_conversas VALUES (?,?)',('5567996373431@c.us',json.dumps({'id':'5567996373431@c.us','name':'Contato de Teste','phone':'5567996373431'})))
   db.execute('INSERT INTO wa_mensagens VALUES (?,?,?,?)',('previous','5567996373431@c.us',time.time()-100,json.dumps({'id':'previous','body':'Histórico preservado de teste','timestamp':time.time()-100})))
  db=None

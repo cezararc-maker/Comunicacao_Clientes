@@ -66,3 +66,11 @@ Em Conversas, Conexão e QR Code e Reconectar WhatsApp abrem o painel da conexã
 A inicialização utiliza a identificação atual do Chromium e ignora o cache de código/Service Worker durante o carregamento, preservando os arquivos de sessão. A navegação e a inicialização têm prazo máximo; falhas de rede ou autenticação são apresentadas no painel de conexão e registradas em `%APPDATA%\comunicacao-clientes\diagnostics\whatsapp-connection.log`. Pedidos repetidos não fingem reiniciar uma inicialização em andamento.
 
 No painel Conexão e QR Code, Desconectar aplicativo informa os departamentos afetados e pede confirmação. A desconexão interrompe inclusive uma inicialização travada, sem logout, exclusão de arquivos de autenticação ou limpeza do histórico. Conectar / reconectar reativa o número quando necessário. Apenas administradores controlam sessões compartilhadas.
+
+
+### Correção 0.19.3 — entradas e notificações de triagem
+Mensagens sem identificação unívoca de empresa/departamento aparecem em Conversas para administradores e usuários autorizados de triagem, com prévia, contador e notificação clicável. Identificar e iniciar atendimento preserva as mensagens já recebidas e notifica o responsável vinculado à empresa selecionada. A fila deixa de depender da abertura da Gestão.
+
+Quando a empresa tem um único responsável entre os departamentos vinculados ao número compartilhado, o atendimento é iniciado automaticamente nesse departamento. Com múltiplas empresas ou responsáveis possíveis, a seleção continua explícita para preservar a atribuição e o histórico corretos. Não há ressincronização nem importação de mensagens antigas.
+
+Se todas as empresas possíveis têm o mesmo responsável no número conectado, ele recebe a pendência e pode identificar a empresa, mesmo sem permissão geral de triagem. Administradores visualizam a fila, mas o alerta vai somente ao responsável comum. Quando não existe responsável comum, usuários autorizados de triagem recebem o aviso.

@@ -140,4 +140,47 @@ class WorkflowTests(unittest.TestCase):
   self.assertEqual(queued.status_code,202)
   command=self.claim();self.assertEqual(command['conexao_id'],1);self.assertEqual(command['tipo'],'conectar')
 
+ def test_shared_connection_unique_company_owner_routes_automatically(self):
+  self.admin.post('/api/gestao/departamentos/2/conexao',json={'conexao_id':1})
+  aid=self.incoming('shared-unique')
+  self.assertIsNotNone(aid)
+  self.assertEqual(self.source.get('/api/gestao/atendimentos/'+str(aid)).json['atendimento']['usuario_id'],self.source_id)
+  self.assertEqual(self.admin.get('/api/gestao/avisos').json['triagem'],[])
+
+ def test_ambiguous_companies_notify_triage_and_preserve_messages(self):
+  with server.connect() as db:db.execute("INSERT INTO vinculos(empresa_id,contato_id,funcao) VALUES (2,1,'Outro vínculo')")
+  self.assertIsNone(self.incoming('ambiguous-one'))
+  row=self.admin.get('/api/gestao/avisos').json['triagem'][0]
+  self.assertEqual(sorted(row['empresas']),[1,2]);self.assertEqual(row['previa'],'Pedido do cliente')
+  self.assertEqual(self.other.get('/api/gestao/avisos').json['triagem'],[])
+  self.assertEqual(self.dest.get('/api/gestao/avisos').json['triagem'],[])
+  self.assertIsNone(self.incoming('ambiguous-two'))
+  updated=self.admin.get('/api/gestao/avisos').json['triagem'][0]
+  self.assertGreater(updated['aviso_id'],row['aviso_id']);self.assertEqual(updated['mensagens'],2)
+  result=self.admin.post('/api/gestao/triagem/classificar',json={'conexao_id':1,'conversa_id':self.chat,'departamento_id':6,'empresa_id':1})
+  self.assertEqual(result.status_code,200)
+  self.assertEqual(self.admin.get('/api/gestao/avisos').json['triagem'],[])
+  self.assertEqual(self.source.get('/api/gestao/atendimentos/'+str(result.json['id'])).json['total_mensagens'],2)
+  self.assertEqual(len(self.source.get('/api/gestao/avisos').json['mensagens']),2)
+
+ def test_lid_reply_keeps_verified_phone(self):
+  response=self.admin.post('/api/gestao/ponte/mensagem',headers=self.trusted,json={'conexao_id':1,'conversa_id':'123456789@lid','telefone':'5567996373431','nome':'Cliente','mensagem':{'id':'lid-one','timestamp':time.time()+.01,'fromMe':False,'body':'Pedido'}})
+  aid=response.json['atendimento_id'];self.assertIsNotNone(aid);self.assertEqual(self.source.get('/api/gestao/atendimentos/'+str(aid)).json['telefone'],'5567996373431')
+  queued=self.source.post('/api/gestao/enviar',json={'atendimento_id':aid,'texto':'Resposta','telefone':'telefone adulterado'})
+  self.assertEqual(queued.status_code,202)
+  command=self.claim();self.assertEqual(command['dados']['telefone'],'5567996373431');self.assertEqual(command['dados']['conversa_id'],'123456789@lid')
+
+ def test_common_owner_of_ambiguous_companies_can_identify_without_global_triage(self):
+  with server.connect() as db:
+   db.execute("INSERT INTO vinculos(empresa_id,contato_id,funcao) VALUES (2,1,'Outro vínculo')")
+   db.execute('DELETE FROM usuario_empresas WHERE empresa_id=2')
+   db.execute('INSERT INTO usuario_empresas(usuario_id,departamento_id,empresa_id) VALUES (?,?,?)',(self.source_id,6,2))
+   db.execute('UPDATE usuarios SET triagem=0 WHERE id=?',(self.source_id,))
+  self.assertIsNone(self.incoming('common-owner'))
+  rows=self.source.get('/api/gestao/avisos').json['triagem'];self.assertEqual(len(rows),1);self.assertTrue(rows[0]['notificar']);self.assertEqual(rows[0]['responsavel_id'],self.source_id)
+  self.assertFalse(self.admin.get('/api/gestao/avisos').json['triagem'][0]['notificar'])
+  self.assertEqual(self.other.get('/api/gestao/triagem').status_code,403)
+  result=self.source.post('/api/gestao/triagem/classificar',json={'conexao_id':1,'conversa_id':self.chat,'departamento_id':6,'empresa_id':2})
+  self.assertEqual(result.status_code,200);self.assertEqual(self.source.get('/api/gestao/atendimentos/'+str(result.json['id'])).json['atendimento']['empresa_id'],2)
+
 if __name__=='__main__':unittest.main()

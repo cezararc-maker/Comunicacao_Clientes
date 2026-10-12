@@ -351,7 +351,8 @@ def register_management(app, connect):
             for event in events:event['dados']=json.loads(event['dados'])
             photo=db.execute('SELECT foto FROM fluxo_contatos WHERE conexao_id=? AND conversa_id=?',(a['conexao_id'],a['conversa_id'])).fetchone()
             presence=db.execute('SELECT tipo FROM fluxo_presenca WHERE conexao_id=? AND conversa_id=? AND expira>?',(a['conexao_id'],a['conversa_id'],time.time())).fetchone()
-            return jsonify(atendimento=a,mensagens=messages,eventos=events,total_mensagens=count,offset=offset,foto=photo[0] if photo else None,presenca=presence[0] if presence else None)
+            phone=db.execute('SELECT telefone FROM fluxo_mensagens WHERE conexao_id=? AND conversa_id=? ORDER BY timestamp DESC LIMIT 1',(a['conexao_id'],a['conversa_id'])).fetchone()
+            return jsonify(atendimento=a,mensagens=messages,eventos=events,total_mensagens=count,offset=offset,telefone=phone[0] if phone else a['conversa_id'].split('@')[0],foto=photo[0] if photo else None,presenca=presence[0] if presence else None)
 
     @bp.post('/atendimentos/<int:aid>/encerrar')
     def finish(aid):

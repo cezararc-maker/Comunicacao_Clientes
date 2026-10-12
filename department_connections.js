@@ -54,7 +54,7 @@ function createDepartmentConnections({token,dataPath,getPrimary,reconnectPrimary
   if(command.tipo==='desconectar'){await disconnect(id);return {};}
   const c=id===1?getPrimary():clients.get(id);if(!c)throw Error('Número desconectado. A mensagem não foi enviada.');
   const actual=serializedId(c.info?.wid).split('@')[0];if(actual!==data.numero)throw Error('O número conectado não corresponde ao atendimento.');
-  if(!PHONES.includes(data.conversa_id.split('@')[0]))throw Error('Contato fora dos dois números autorizados para testes.');
+  if(!PHONES.includes(data.telefone||data.conversa_id.split('@')[0]))throw Error('Contato fora dos dois números autorizados para testes.');
   let content=data.texto,options={};
   if(data.resposta_id)options.quotedMessageId=String(data.resposta_id);
   if(data.midia){const kind=data.tipo_midia||'document',valid=validateMedia(data.midia,kind==='voice'?'audio':kind);const {MessageMedia}=require('whatsapp-web.js');content=new MessageMedia(valid.mimetype,valid.data,valid.filename);options={...options,caption:data.texto||undefined,sendAudioAsVoice:kind==='voice',sendMediaAsSticker:kind==='sticker',sendVideoAsGif:kind==='gif',sendMediaAsDocument:kind==='document'};}
@@ -64,7 +64,7 @@ function createDepartmentConnections({token,dataPath,getPrimary,reconnectPrimary
    // Persist successful opening before releasing message_create suppression.
    await api('comandos/'+command.id+'/resultado',{ok:true,mensagem:entry(sent),resultado:{}});
    if(id===1)primarySent(sent,false,data.resposta_id);
-   await receive(id,sent,{phone:data.conversa_id.split('@')[0],name:data.nome},true);
+   await receive(id,sent,{phone:data.telefone||data.conversa_id.split('@')[0],name:data.nome},true);
    return {persisted:true};
   }finally{sending.delete(key);}
  }
