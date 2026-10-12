@@ -141,6 +141,11 @@ def register_workflow(bp, connect, api):
                 candidates=[(candidate,owner(db,candidate,company)) for candidate in departments]
                 candidates=[(candidate,responsible) for candidate,responsible in candidates if responsible]
                 if len(candidates)==1:dep,user=candidates[0]
+            if not user and not company:
+                common=pending_owner(db,conn,companies)
+                if common:
+                    user=db.execute('SELECT * FROM usuarios WHERE id=? AND ativo=1',(common,)).fetchone()
+                    if user:dep=user['departamento_id']
             if send_context:
                 dep=send_context['departamento_id'];company=send_context.get('empresa_id');user=owner(db,dep,company) or db.execute('SELECT * FROM usuarios WHERE id=?',(send_context['usuario_id'],)).fetchone()
             if user:a=make_attendance(db,conn,chat,name,dep,company,user,stamp,send_context.get('assunto','Atendimento via WhatsApp') if send_context else 'Atendimento via WhatsApp',send_context.get('origem_id') if send_context else None)
@@ -234,6 +239,28 @@ def register_workflow(bp, connect, api):
             rows=triage_rows(db)
             if not admin() and not g.user['triagem'] and not rows:return fail('Triagem não autorizada.',403)
             return jsonify(rows)
+
+    @bp.post('/triagem/abrir')
+    def open_pending():
+        data=payload();conn=ident(data.get('conexao_id'));chat=clean(data.get('conversa_id'),'a conversa',100)
+        with connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            existing=db.execute("SELECT id FROM atendimentos WHERE conexao_id=? AND conversa_id=? AND status IN ('aberto','pendencia','documentacao')",(conn,chat)).fetchone()
+            if existing:
+                if not attendance(db,existing['id']):return fail('Atendimento não autorizado.',403)
+                return jsonify(ok=True,id=existing['id'])
+            visible=next((row for row in triage_rows(db) if row['conexao_id']==conn and row['conversa_id']==chat),None)
+            if not visible:return fail('Conversa não autorizada ou já aberta.',403)
+            responsible=visible['responsavel_id'] or g.user['id']
+            user=db.execute('SELECT * FROM usuarios WHERE id=? AND ativo=1',(responsible,)).fetchone()
+            departments=[dict(r) for r in db.execute('SELECT * FROM departamentos WHERE conexao_id=? AND ativo=1 ORDER BY id',(conn,))]
+            dep=next((d['id'] for d in departments if d['id']==user['departamento_id']),None)
+            if not dep and admin():dep=next((d['id'] for d in departments if d['nome']=='Recepção'),departments[0]['id'] if departments else None)
+            if not dep:return fail('Configure um departamento ativo para esta conexão.',409)
+            row=db.execute('SELECT * FROM fluxo_mensagens WHERE conexao_id=? AND conversa_id=? AND atendimento_id IS NULL ORDER BY timestamp LIMIT 1',(conn,chat)).fetchone()
+            a=make_attendance(db,conn,chat,row['nome'],dep,None,user,row['timestamp'])
+            linked_messages(db,a);audit(db,a['id'],'abertura_sem_empresa',{'responsavel_id':responsible})
+            return jsonify(ok=True,id=a['id'])
 
     @bp.post('/triagem/classificar')
     def classify():
@@ -334,7 +361,7 @@ def register_workflow(bp, connect, api):
             if not re.fullmatch(r'\d{10,15}',phone):raise ValueError('Telefone inválido; inclua o código do país.')
             chat=phone+'@c.us';origin=None
         if user['perfil']!='admin' and company and not (a and a['usuario_id']==user['id']) and not db.execute('SELECT 1 FROM usuario_empresas WHERE usuario_id=? AND departamento_id=? AND empresa_id=?',(user['id'],dep,company)).fetchone():raise ValueError('Empresa fora da sua responsabilidade.')
-        if user['perfil']!='admin' and not company and not user['triagem']:raise ValueError('Selecione uma empresa sob responsabilidade.')
+        if user['perfil']!='admin' and not company and not user['triagem'] and not (a and a['usuario_id']==user['id']) and pending_owner(db,conn,company_for(db,chat.split('@')[0]))!=user['id']:raise ValueError('Conversa fora da sua responsabilidade.')
         c=db.execute('SELECT * FROM gestao_conexoes WHERE id=?',(conn,)).fetchone()
         if company and not db.execute('SELECT 1 FROM empresas WHERE id=?',(company,)).fetchone():raise ValueError('Empresa inexistente.')
         if not c or c['estado']!='conectado' or not c['numero'] or not c['habilitada']:raise ValueError('Número indisponível. A mensagem digitada será preservada.')
@@ -376,7 +403,7 @@ def register_workflow(bp, connect, api):
             if not t or (not admin() and t['usuario_id']!=g.user['id']):return fail('Contexto não autorizado.',403)
             a=dict(db.execute('SELECT * FROM atendimentos WHERE id=?',(t['origem_id'],)).fetchone())
             rows=[json.loads(r[0]) for r in db.execute('SELECT dados FROM atendimento_mensagens WHERE atendimento_id=? ORDER BY timestamp,mensagem_id LIMIT 500',(a['id'],))]
-            return jsonify(atendimento=a,mensagens=rows,motivo=t['motivo'])
+            return jsonify(atendimento=api['public_attendance'](a),mensagens=rows,motivo=t['motivo'])
 
     @bp.get('/atendimentos/<int:aid>/origem')
     def origin_context(aid):
@@ -385,7 +412,7 @@ def register_workflow(bp, connect, api):
             if not a or not a['origem_id']:return fail('Contexto não autorizado.',403)
             source=db.execute('SELECT * FROM atendimentos WHERE id=?',(a['origem_id'],)).fetchone()
             messages=[json.loads(r[0]) for r in db.execute('SELECT dados FROM atendimento_mensagens WHERE atendimento_id=? ORDER BY timestamp,mensagem_id LIMIT 500',(source['id'],))]
-            return jsonify(atendimento=dict(source),mensagens=messages)
+            return jsonify(atendimento=api['public_attendance'](source),mensagens=messages)
 
     # Trusted Electron worker routes; no renderer receives the shared secret.
     @bp.get('/ponte/configuracao')

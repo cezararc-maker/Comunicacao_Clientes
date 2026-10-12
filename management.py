@@ -285,6 +285,12 @@ def register_management(app, connect):
         if not row:return None
         return dict(row) if can_view(db,row) else False
 
+    def public_attendance(row):
+        result=dict(row)
+        if result['usuario_id']!=g.user['id']:
+            result['pendencia']='';result['prazo']=''
+        return result
+
     def audit(db,aid,kind,details):
         db.execute('INSERT INTO atendimento_eventos(atendimento_id,tipo,usuario_id,usuario_nome,horario,dados) VALUES (?,?,?,?,?,?)',(aid,kind,g.user['id'],g.user['nome'],time.time(),json.dumps(details,ensure_ascii=False)))
 
@@ -337,7 +343,7 @@ def register_management(app, connect):
             where=' WHERE '+' AND '.join(filters) if filters else ''
             offset=max(0,min(int(request.args.get('offset',0)),100000));total=db.execute('SELECT count(*) FROM atendimentos a'+where,args).fetchone()[0]
             rows=[dict(r) for r in db.execute('SELECT a.* FROM atendimentos a'+where+' ORDER BY a.iniciado DESC,a.id DESC LIMIT 50 OFFSET ?',args+[offset])]
-            return jsonify(itens=rows,total=total,offset=offset)
+            return jsonify(itens=[public_attendance(row) for row in rows],total=total,offset=offset)
 
     @bp.get('/atendimentos/<int:aid>')
     def details(aid):
@@ -348,19 +354,29 @@ def register_management(app, connect):
             offset=max(0,min(int(request.args.get('offset',0)),100000));count=db.execute('SELECT count(*) FROM atendimento_mensagens WHERE atendimento_id=?',(aid,)).fetchone()[0]
             messages=[json.loads(r[0]) for r in db.execute('SELECT dados FROM atendimento_mensagens WHERE atendimento_id=? ORDER BY timestamp,mensagem_id LIMIT 100 OFFSET ?',(aid,offset))]
             events=[dict(r) for r in db.execute('SELECT * FROM atendimento_eventos WHERE atendimento_id=? ORDER BY horario,id',(aid,))]
-            for event in events:event['dados']=json.loads(event['dados'])
+            for event in events:
+                event['dados']=json.loads(event['dados'])
+                if a['usuario_id']!=g.user['id'] and event['tipo']=='situacao':
+                    event['dados'].pop('pendencia',None);event['dados'].pop('prazo',None)
             photo=db.execute('SELECT foto FROM fluxo_contatos WHERE conexao_id=? AND conversa_id=?',(a['conexao_id'],a['conversa_id'])).fetchone()
             presence=db.execute('SELECT tipo FROM fluxo_presenca WHERE conexao_id=? AND conversa_id=? AND expira>?',(a['conexao_id'],a['conversa_id'],time.time())).fetchone()
             phone=db.execute('SELECT telefone FROM fluxo_mensagens WHERE conexao_id=? AND conversa_id=? ORDER BY timestamp DESC LIMIT 1',(a['conexao_id'],a['conversa_id'])).fetchone()
-            return jsonify(atendimento=a,mensagens=messages,eventos=events,total_mensagens=count,offset=offset,telefone=phone[0] if phone else a['conversa_id'].split('@')[0],foto=photo[0] if photo else None,presenca=presence[0] if presence else None)
+            return jsonify(atendimento=public_attendance(a),mensagens=messages,eventos=events,total_mensagens=count,offset=offset,telefone=phone[0] if phone else a['conversa_id'].split('@')[0],foto=photo[0] if photo else None,presenca=presence[0] if presence else None)
 
     @bp.post('/atendimentos/<int:aid>/encerrar')
     def finish(aid):
-        data=payload();summary=clean(data.get('resumo'),'o resumo do atendimento',4000)
+        data=payload();summary=str(data.get('resumo') or '').strip()[:4000]
         with connect() as db:
             db.execute('BEGIN IMMEDIATE');a=attendance(db,aid)
             if not a:return fail('Atendimento não autorizado ou inexistente.',403)
             if a['status']=='encerrado':return jsonify(ok=True,protocolo=a['protocolo'])
+            if not a['empresa_id']:
+                if not data.get('empresa_id'):return fail('Vincule a empresa para concluir o atendimento.',409)
+                company_id=ident(data['empresa_id']);company=db.execute('SELECT * FROM empresas WHERE id=?',(company_id,)).fetchone()
+                if not company:return fail('Empresa inexistente.',400)
+                if not admin() and not db.execute('SELECT 1 FROM usuario_empresas WHERE usuario_id=? AND departamento_id=? AND empresa_id=?',(g.user['id'],a['departamento_atual'],company_id)).fetchone():return fail('Empresa fora da sua responsabilidade.',403)
+                db.execute('UPDATE atendimentos SET empresa_id=?,empresa_nome=?,empresa_codigo=? WHERE id=?',(company_id,company['nome'],company['codigo'],aid))
+                audit(db,aid,'vinculo_empresa',{'empresa_id':company_id})
             capture_open_attendances(db)
             number=db.execute('SELECT ultimo FROM protocolo_sequencia WHERE id=1').fetchone()[0]+1
             db.execute('UPDATE protocolo_sequencia SET ultimo=? WHERE id=1',(number,))
@@ -419,7 +435,7 @@ def register_management(app, connect):
             if not row:return fail('Mídia ainda não disponível no cache local.',404)
             return jsonify(json.loads(row['dados']))
 
-    register_workflow(bp,connect,dict(fail=fail,payload=payload,ident=ident,clean=clean,admin=admin,attendance=attendance,audit=audit))
+    register_workflow(bp,connect,dict(fail=fail,payload=payload,ident=ident,clean=clean,admin=admin,attendance=attendance,audit=audit,public_attendance=public_attendance))
     app.register_blueprint(bp)
 
     @app.before_request

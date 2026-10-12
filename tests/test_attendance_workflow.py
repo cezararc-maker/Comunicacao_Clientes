@@ -176,11 +176,35 @@ class WorkflowTests(unittest.TestCase):
    db.execute('DELETE FROM usuario_empresas WHERE empresa_id=2')
    db.execute('INSERT INTO usuario_empresas(usuario_id,departamento_id,empresa_id) VALUES (?,?,?)',(self.source_id,6,2))
    db.execute('UPDATE usuarios SET triagem=0 WHERE id=?',(self.source_id,))
-  self.assertIsNone(self.incoming('common-owner'))
-  rows=self.source.get('/api/gestao/avisos').json['triagem'];self.assertEqual(len(rows),1);self.assertTrue(rows[0]['notificar']);self.assertEqual(rows[0]['responsavel_id'],self.source_id)
-  self.assertFalse(self.admin.get('/api/gestao/avisos').json['triagem'][0]['notificar'])
-  self.assertEqual(self.other.get('/api/gestao/triagem').status_code,403)
-  result=self.source.post('/api/gestao/triagem/classificar',json={'conexao_id':1,'conversa_id':self.chat,'departamento_id':6,'empresa_id':2})
-  self.assertEqual(result.status_code,200);self.assertEqual(self.source.get('/api/gestao/atendimentos/'+str(result.json['id'])).json['atendimento']['empresa_id'],2)
+  aid=self.incoming('common-owner');self.assertIsNotNone(aid)
+  details=self.source.get('/api/gestao/atendimentos/'+str(aid)).json['atendimento'];self.assertIsNone(details['empresa_id']);self.assertEqual(details['usuario_id'],self.source_id)
+  self.assertEqual(self.source.post('/api/gestao/enviar',json={'atendimento_id':aid,'texto':'Podemos conversar antes do vínculo'}).status_code,202)
+  self.assertEqual(self.source.post('/api/gestao/atendimentos/'+str(aid)+'/encerrar',json={}).status_code,409)
+  result=self.source.post('/api/gestao/atendimentos/'+str(aid)+'/encerrar',json={'empresa_id':2})
+  self.assertEqual(result.status_code,200);self.assertEqual(self.source.get('/api/gestao/atendimentos/'+str(aid)).json['atendimento']['empresa_id'],2)
+
+ def test_pending_opens_without_company_and_finish_requires_link(self):
+  with server.connect() as db:db.execute("INSERT INTO vinculos(empresa_id,contato_id,funcao) VALUES (2,1,'Outro vínculo')")
+  self.assertIsNone(self.incoming('before-link'))
+  opened=self.admin.post('/api/gestao/triagem/abrir',json={'conexao_id':1,'conversa_id':self.chat})
+  self.assertEqual(opened.status_code,200);aid=opened.json['id']
+  detail=self.admin.get('/api/gestao/atendimentos/'+str(aid)).json;self.assertIsNone(detail['atendimento']['empresa_id']);self.assertEqual(detail['total_mensagens'],1)
+  repeated=self.admin.post('/api/gestao/triagem/abrir',json={'conexao_id':1,'conversa_id':self.chat});self.assertEqual(repeated.json['id'],aid)
+  self.assertEqual(self.admin.post('/api/gestao/atendimentos/'+str(aid)+'/encerrar',json={}).status_code,409)
+  self.assertEqual(self.admin.get('/api/gestao/atendimentos/'+str(aid)).json['atendimento']['status'],'aberto')
+  result=self.admin.post('/api/gestao/atendimentos/'+str(aid)+'/encerrar',json={'empresa_id':2});self.assertEqual(result.status_code,200);self.assertEqual(result.json['protocolo'],1)
+  self.assertEqual(self.admin.get('/api/gestao/atendimentos/'+str(aid)).json['atendimento']['empresa_nome'],'Empresa B')
+
+ def test_pending_reason_private_to_owner_and_never_sent(self):
+  aid=self.incoming('private-case');secret='Conferir documentos internos do cadastro'
+  self.source.post('/api/gestao/atendimentos/'+str(aid)+'/situacao',json={'status':'documentacao','pendencia':secret,'prazo':'2026-11-01'})
+  self.assertEqual(self.source.get('/api/gestao/atendimentos/'+str(aid)).json['atendimento']['pendencia'],secret)
+  detail=self.admin.get('/api/gestao/atendimentos/'+str(aid)).json;self.assertEqual(detail['atendimento']['pendencia'],'');self.assertEqual(detail['atendimento']['prazo'],'')
+  self.assertTrue(all(secret not in json.dumps(e['dados']) for e in detail['eventos']))
+  self.assertEqual(self.admin.get('/api/gestao/atendimentos?status=ativos').json['itens'][0]['pendencia'],'')
+  self.assertEqual(self.source.post('/api/gestao/enviar',json={'atendimento_id':aid,'texto':'Mensagem ao cliente'}).status_code,202)
+  command=self.claim();self.assertEqual(command['dados']['texto'],'Mensagem ao cliente');self.assertNotIn(secret,json.dumps(command['dados']))
+  self.assertEqual(self.source.post('/api/gestao/atendimentos/'+str(aid)+'/encerrar',json={}).status_code,200)
+
 
 if __name__=='__main__':unittest.main()

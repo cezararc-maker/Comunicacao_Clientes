@@ -74,3 +74,9 @@ Mensagens sem identificação unívoca de empresa/departamento aparecem em Conve
 Quando a empresa tem um único responsável entre os departamentos vinculados ao número compartilhado, o atendimento é iniciado automaticamente nesse departamento. Com múltiplas empresas ou responsáveis possíveis, a seleção continua explícita para preservar a atribuição e o histórico corretos. Não há ressincronização nem importação de mensagens antigas.
 
 Se todas as empresas possíveis têm o mesmo responsável no número conectado, ele recebe a pendência e pode identificar a empresa, mesmo sem permissão geral de triagem. Administradores visualizam a fila, mas o alerta vai somente ao responsável comum. Quando não existe responsável comum, usuários autorizados de triagem recebem o aviso.
+
+
+### Interface 0.19.4 — empresa na conclusão e notas internas
+O responsável comum pode receber e responder ao atendimento sem escolher a empresa antes. Conversas ainda na fila abrem sem esse vínculo ao clicar; a empresa é obrigatória somente para concluir e arquivar. A conclusão não pede motivo ou resumo. Quando a empresa já estiver vinculada, Concluído encerra diretamente.
+
+Pendência e documentação exibem o motivo dentro da conversa somente para o responsável atual. O conteúdo é interno: fica fora das mensagens enviadas ao WhatsApp e é ocultado também nas respostas da API e no histórico de movimentações para outros usuários. A situação é exibida nos cartões laterais com contorno e indicador verde, vermelho ou azul escuro. Dados antigos, resumos históricos e sessões são preservados.
