@@ -131,4 +131,13 @@ class WorkflowTests(unittest.TestCase):
   recovered=self.admin.post('/api/gestao/ponte/comandos',headers=self.trusted,json={'recuperar':True});self.assertIsNone(recovered.json['comando'])
   self.assertEqual(self.dest.get('/api/gestao/comandos/'+str(queued.json['comando_id'])).json['estado'],'erro');self.assertEqual(len(self.dest.get('/api/gestao/avisos').json['transferencias']),1)
 
+ def test_connection_qr_and_commands_require_administrator(self):
+  with server.connect() as db:db.execute("UPDATE gestao_conexoes SET qr='qr-test-private' WHERE id=1")
+  self.assertEqual(next(c for c in self.admin.get('/api/gestao/contexto').json['conexoes'] if c['id']==1)['qr'],'qr-test-private')
+  self.assertTrue(all('qr' not in c for c in self.source.get('/api/gestao/contexto').json['conexoes']))
+  self.assertEqual(self.source.post('/api/gestao/conexoes/1/conectar',json={}).status_code,403)
+  queued=self.admin.post('/api/gestao/conexoes/1/conectar',json={})
+  self.assertEqual(queued.status_code,202)
+  command=self.claim();self.assertEqual(command['conexao_id'],1);self.assertEqual(command['tipo'],'conectar')
+
 if __name__=='__main__':unittest.main()

@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory() as folder:
       message={'id':'fixture-'+str(row['id']),'body':row['dados']['texto'],'timestamp':time.time()+.01,'fromMe':True,'ack':2}
       bridge.post('/api/gestao/ponte/comandos/'+str(row['id'])+'/resultado',headers=headers,json={'ok':True,'mensagem':message,'resultado':{}})
      else:
-      bridge.post('/api/gestao/ponte/estado',headers=headers,json={'conexao_id':row['conexao_id'],'estado':'desconectado' if row['tipo']=='desconectar' else 'qr'})
+      bridge.post('/api/gestao/ponte/estado',headers=headers,json={'conexao_id':row['conexao_id'],'estado':'desconectado' if row['tipo']=='desconectar' else 'qr','qr':'' if row['tipo']=='desconectar' else 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII='})
       bridge.post('/api/gestao/ponte/comandos/'+str(row['id'])+'/resultado',headers=headers,json={'ok':True,'resultado':{}})
     running.wait(.01) if not running.is_set() else time.sleep(.08)
  adapter=threading.Thread(target=fake_adapter,daemon=True);adapter.start()

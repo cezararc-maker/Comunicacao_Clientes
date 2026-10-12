@@ -60,7 +60,7 @@ function baseSender(event){return !!window && event.sender.id === window.webCont
 function safeSender(event){return baseSender(event)&&(!managementConfigured||legacyAuthorized);}
 const registerHandle=ipcMain.handle.bind(ipcMain);
 ipcMain.handle=(channel,handler)=>registerHandle(channel,async(event,...args)=>{
- if(channel!=='window-action'&&baseSender(event)){await refreshLegacyAccess();if(managementConfigured&&!legacyAuthorized)throw Error('Entre como administrador para usar a área anterior. Seus atendimentos estão na Gestão.');}
+ if(channel!=='window-action'&&baseSender(event)){await refreshLegacyAccess();if(managementConfigured&&!legacyAuthorized)throw Error('Entre como administrador para administrar o WhatsApp. Seus atendimentos ficam em Conversas.');}
  return handler(event,...args);
 });
 let activeManagementUser=null,nativeNoticeUser=null,nativeNoticeLast=0;

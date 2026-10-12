@@ -196,7 +196,10 @@ def register_management(app, connect):
                 ids=public_user(db,g.user)['empresas'];companies=[c for c in companies if c['id'] in ids]
             users=[dict(r) for r in db.execute('SELECT id,nome,departamento_id FROM usuarios ORDER BY nome')]
             if not admin():users=[u for u in users if u['departamento_id']==g.user['departamento_id']]
-            return jsonify(usuario=public_user(db,g.user),usuarios=users,departamentos=allowed,empresas=companies,conexoes=[dict(r) for r in db.execute('SELECT * FROM gestao_conexoes')])
+            connections=[dict(r) for r in db.execute('SELECT * FROM gestao_conexoes')]
+            if not admin():
+                for connection in connections:connection.pop('qr',None)
+            return jsonify(usuario=public_user(db,g.user),usuarios=users,departamentos=allowed,empresas=companies,conexoes=connections)
 
     @bp.route('/departamentos',methods=['GET','POST'])
     @bp.put('/departamentos/<int:department_id>')
