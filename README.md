@@ -168,3 +168,8 @@ A Gestão integra conversas, abertura automática, responsáveis por empresa/dep
 Em Gestão → Histórico, os atendimentos concluídos são consultados como relatórios, sem reabrir o atendimento ou marcar mensagens como lidas. Pesquise pelo telefone ou nome do contato, protocolo, responsável, departamento, empresa e período. Classifique por início, conclusão, contato, telefone, responsável ou protocolo, em ordem crescente ou decrescente.
 
 Gerar PDF exporta todos os registros autorizados correspondentes aos filtros (até 5.000 atendimentos; restrinja o período acima disso). Ver relatório mostra as mensagens em ordem cronológica, respostas e movimentações internas; Gerar PDF deste atendimento inclui todas as páginas de mensagens, com texto selecionável. Mídias são identificadas por tipo/nome, sem inserir seus arquivos binários no PDF. As permissões e a privacidade das observações internas são preservadas. A geração está disponível no desktop e solicita onde salvar o arquivo.
+
+
+### Navegação nas janelas — v0.19.6
+
+As janelas internas possuem uma seta para voltar no canto superior esquerdo, além do X para fechar no canto superior direito. A prévia de compartilhamento de contato volta à lista preservando a pesquisa. No relatório, a seta volta aos filtros; nos dados do contato/grupo, volta à conversa; no resultado da captura, volta às opções de captura. Voltar não salva nem envia dados.
