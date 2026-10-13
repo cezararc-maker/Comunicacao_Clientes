@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
  captureCancel:info=>ipcRenderer.invoke('capture-cancel',info),
  savePhoneContact:info=>ipcRenderer.invoke('wa-save-contact',info),
  windowAction:action=>ipcRenderer.invoke('window-action',action),
+ generateAuditPdf:info=>ipcRenderer.invoke('audit-report-pdf',info),
  markRead:chatId=>ipcRenderer.invoke('wa-mark-read',chatId),
  groupInfo:id=>ipcRenderer.invoke('wa-group-info',id),
  groupChange:info=>ipcRenderer.invoke('wa-group-change',info),

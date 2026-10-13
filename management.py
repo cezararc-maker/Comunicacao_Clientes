@@ -340,9 +340,20 @@ def register_management(app, connect):
                 if request.args.get(key):filters.append('a.iniciado'+op+'?');args.append(date_value(request.args[key],end))
             if request.args.get('busca'):
                 filters.append('(a.contato_nome LIKE ? OR a.assunto LIKE ? OR a.empresa_nome LIKE ?)');args.extend(['%'+request.args['busca'][:200]+'%']*3)
+            phone_sql="coalesce((SELECT nullif(f.telefone,'') FROM fluxo_mensagens f WHERE f.conexao_id=a.conexao_id AND f.conversa_id=a.conversa_id ORDER BY f.timestamp DESC LIMIT 1), CASE WHEN a.conversa_id LIKE '%@c.us' THEN substr(a.conversa_id,1,instr(a.conversa_id,'@')-1) ELSE '' END)"
+            if request.args.get('nome_contato'):
+                filters.append('a.contato_nome LIKE ?');args.append('%'+request.args['nome_contato'][:200]+'%')
+            if request.args.get('telefone'):
+                phone=re.sub(r'\D','',request.args['telefone'][:100])
+                if not phone:raise ValueError('Informe os dígitos do telefone.')
+                filters.append("replace(replace(replace(replace(replace("+phone_sql+",'+',''),' ',''),'-',''),'(',''),')','') LIKE ?");args.append('%'+phone+'%')
+            sorts={'inicio':'a.iniciado','encerramento':'a.encerrado','contato':'a.contato_nome COLLATE NOCASE','telefone':phone_sql,'responsavel':'a.usuario_nome COLLATE NOCASE','protocolo':'a.protocolo'}
+            sort=request.args.get('classificar','inicio');direction=request.args.get('ordem','desc')
+            if sort not in sorts or direction not in ('asc','desc'):raise ValueError('Ordenação inválida.')
+            order=sorts[sort]+' '+direction+',a.id '+direction
             where=' WHERE '+' AND '.join(filters) if filters else ''
             offset=max(0,min(int(request.args.get('offset',0)),100000));total=db.execute('SELECT count(*) FROM atendimentos a'+where,args).fetchone()[0]
-            rows=[dict(r) for r in db.execute('SELECT a.* FROM atendimentos a'+where+' ORDER BY a.iniciado DESC,a.id DESC LIMIT 50 OFFSET ?',args+[offset])]
+            rows=[dict(r) for r in db.execute('SELECT a.*,'+phone_sql+' telefone FROM atendimentos a'+where+' ORDER BY '+order+' LIMIT 50 OFFSET ?',args+[offset])]
             return jsonify(itens=[public_attendance(row) for row in rows],total=total,offset=offset)
 
     @bp.get('/atendimentos/<int:aid>')

@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('node:assert/strict'),{buildAuditHtml,registerAuditReport}=require('../audit_report');
+const a={id:1,protocolo:10,status:'encerrado',contato_nome:'Ana <script>alert(1)</script>',empresa_nome:'Empresa',empresa_codigo:'001',atual_nome:'Fiscal',usuario_nome:'Maria',iniciado:1791522100,encerrado:1791522200};
+const detail={atendimento:a,telefone:'5567996373431',mensagens:[{body:'Texto selecionável & auditável',timestamp:1791522150,fromMe:false,type:'chat',reply:{author:'Maria',body:'Pedido'}}],eventos:[],total_mensagens:1};
+const html=buildAuditHtml({detail});assert(html.includes('&lt;script&gt;'));assert(!html.includes('<script>'));assert(html.includes('Texto selecionável &amp; auditável'));assert(html.includes('Resposta a Maria: Pedido'));
+(async()=>{let handler;const register=options=>registerAuditReport({ipcMain:{handle:(key,fn)=>handler=fn},baseSender:()=>true,managementRequest:async route=>({ok:true,json:async()=>route==='/contexto'?{usuario:{id:1,nome:'Admin'}}:detail}),...options});
+ register({baseSender:()=>false});await assert.rejects(()=>handler({},{}),/Origem/);
+ register({});await assert.rejects(()=>handler({},{id:'1;drop'}),/inválido/);
+ register({managementRequest:async()=>({ok:false})});await assert.rejects(()=>handler({},{}),/Sessão/);
+ register({managementRequest:async route=>({ok:true,json:async()=>route==='/contexto'?{usuario:{id:1}}:{...detail,atendimento:{...a,status:'aberto'}}})});await assert.rejects(()=>handler({},{id:1}),/concluído/);
+ console.log('Audit PDF: escaped content, reply text, sender, session and closed-case guards passed.');
+})().catch(e=>{console.error(e);process.exitCode=1});

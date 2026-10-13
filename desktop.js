@@ -19,6 +19,7 @@ const {createDesktopNotifications}=require('./desktop_notifications');let deskto
 const {registerBatchHandlers}=require('./batch_messages');const omittedMessages=new Set();
 const {registerMediaHandlers}=require('./media_ipc');
 const {registerCaptureHandlers}=require('./capture_conversation');
+const {registerAuditReport}=require('./audit_report');
 const {createDepartmentConnections}=require('./department_connections');
 const {connectionOptions,connectionError,initializeConnection}=require('./whatsapp_connection');
 let departmentConnections=null,legacyAuthorized=false,managementConfigured=false;
@@ -61,7 +62,7 @@ function baseSender(event){return !!window && event.sender.id === window.webCont
 function safeSender(event){return baseSender(event)&&(!managementConfigured||legacyAuthorized);}
 const registerHandle=ipcMain.handle.bind(ipcMain);
 ipcMain.handle=(channel,handler)=>registerHandle(channel,async(event,...args)=>{
- if(channel!=='window-action'&&baseSender(event)){await refreshLegacyAccess();if(managementConfigured&&!legacyAuthorized)throw Error('Entre como administrador para administrar o WhatsApp. Seus atendimentos ficam em Conversas.');}
+ if(!['window-action','audit-report-pdf'].includes(channel)&&baseSender(event)){await refreshLegacyAccess();if(managementConfigured&&!legacyAuthorized)throw Error('Entre como administrador para administrar o WhatsApp. Seus atendimentos ficam em Conversas.');}
  return handler(event,...args);
 });
 let activeManagementUser=null,nativeNoticeUser=null,nativeNoticeLast=0;
@@ -220,6 +221,7 @@ app.whenReady().then(async()=>{
  window.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('http://127.0.0.1:8765/'))event.preventDefault()});
  desktopNotifications=createDesktopNotifications({BrowserWindow,ipcMain,screen,getWindow:()=>window,onOpen:async target=>{await refreshLegacyAccess();if(target.triage){if(!activeManagementUser||activeManagementUser.id!==target.userId)return false;const response=await managementRequest('/triagem');if(!response.ok)return false;const rows=await response.json();if(!rows.some(row=>row.conexao_id===target.triage.conexao_id&&row.conversa_id===target.triage.conversa_id))return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('management-open-message',target);return true;}if(target.attendanceId){if(!activeManagementUser||activeManagementUser.id!==target.userId)return false;const response=await managementRequest('/atendimentos/'+target.attendanceId);if(!response.ok)return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('management-open-message',target);return true;}if(managementConfigured&&!legacyAuthorized)return false;const chat=conversations.get(target.chatId);if(!window||window.isDestroyed()||!allowedChatIds.has(target.chatId)||!chat?.messages.some(message=>message.id===target.messageId))return false;if(window.isMinimized())window.restore();window.show();window.focus();window.webContents.send('wa-open-message',target);return true;}});
  registerCaptureHandlers({ipcMain,BrowserWindow,dialog,getWindow:()=>window,safeSender});
+ registerAuditReport({ipcMain,BrowserWindow,dialog,getWindow:()=>window,baseSender,managementRequest});
  try{await awaitServer();managementConfigured=!!(await fetch('http://127.0.0.1:8765/api/gestao/status').then(r=>r.json())).configurado;for(const id of await history.loadOmitted())omittedMessages.add(id);for(const chat of await history.load()){if(!phoneInScope(chat.phone)&&!(chat.isGroup&&chat.name===TEST_GROUP))continue;chat.messages=(chat.messages||[]).filter(m=>m.timestamp>=SINCE);conversations.set(chat.id,chat);allowedChatIds.add(chat.id);}historyReady=true;update({});await window.loadURL('http://127.0.0.1:8765/');window.show();departmentConnections=createDepartmentConnections({token:syncToken,dataPath:app.getPath('userData'),getPrimary:()=>client,reconnectPrimary:resetClient,disconnectPrimary:disconnectWhatsapp,primarySent:storeMessage});await departmentConnections.start();const accessTimer=setInterval(pollOwnerNotifications,1500);accessTimer.unref();await refreshLegacyAccess();const configs=await fetch('http://127.0.0.1:8765/api/gestao/ponte/configuracao',{headers:{'X-Sync-Token':syncToken}}).then(r=>r.json());if(configs.find(c=>c.id===1)?.habilitada)startWhatsapp();}
  catch(e){dialog.showErrorBox('Falha ao iniciar',e.message);app.quit();}
 });

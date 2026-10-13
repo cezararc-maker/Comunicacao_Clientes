@@ -161,3 +161,10 @@ As permissões desta etapa abrangem a Gestão e seus históricos. A integração
 ## Atendimento por departamentos (v0.18.0)
 
 A Gestão integra conversas, abertura automática, responsáveis por empresa/departamento, conexões independentes ou compartilhadas, situações de pendência/documentação/conclusão e transferências entre números com aviso persistente. Consulte [configuração e roteiro de testes](docs/ATENDIMENTO_DEPARTAMENTOS.md). O histórico e as sessões anteriores são preservados. Esta versão permanece destinada a testes locais.
+
+
+### Relatórios de auditoria — v0.19.5
+
+Em Gestão → Histórico, os atendimentos concluídos são consultados como relatórios, sem reabrir o atendimento ou marcar mensagens como lidas. Pesquise pelo telefone ou nome do contato, protocolo, responsável, departamento, empresa e período. Classifique por início, conclusão, contato, telefone, responsável ou protocolo, em ordem crescente ou decrescente.
+
+Gerar PDF exporta todos os registros autorizados correspondentes aos filtros (até 5.000 atendimentos; restrinja o período acima disso). Ver relatório mostra as mensagens em ordem cronológica, respostas e movimentações internas; Gerar PDF deste atendimento inclui todas as páginas de mensagens, com texto selecionável. Mídias são identificadas por tipo/nome, sem inserir seus arquivos binários no PDF. As permissões e a privacidade das observações internas são preservadas. A geração está disponível no desktop e solicita onde salvar o arquivo.

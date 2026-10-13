@@ -23,6 +23,24 @@ class ManagementTests(unittest.TestCase):
   result=self.admin.post('/api/gestao/usuarios',json={'nome':login,'login':login,'senha':'Senha-teste-123','perfil':'atendente','departamento_id':department,'empresas':companies,'triagem':triage});self.assertEqual(result.status_code,200,result.json);return result.json['id']
  def open(self,client,department=6,company=1):
   return client.post('/api/gestao/atendimentos',json={'conversa_id':self.chat['id'],'departamento_id':department,'empresa_id':company,'assunto':'Documento solicitado'})
+ def test_audit_filters_order_and_permissions(self):
+  aid=self.open(self.admin).json['id'];self.admin.post(f'/api/gestao/atendimentos/{aid}/encerrar',json={})
+  second=self.open(self.admin).json['id'];self.admin.post(f'/api/gestao/atendimentos/{second}/encerrar',json={})
+  base='/api/gestao/atendimentos?status=encerrado'
+  self.assertEqual(self.admin.get(base+'&nome_contato=Ana&telefone=+55(67)99637-3431').json['total'],2)
+  self.assertEqual(self.admin.get(base+'&nome_contato=Outro').json['total'],0)
+  self.assertEqual(self.admin.get(base+'&telefone=123456').json['total'],0)
+  self.assertEqual([r['id'] for r in self.admin.get(base+'&classificar=protocolo&ordem=asc').json['itens']],[aid,second])
+  self.assertEqual([r['id'] for r in self.admin.get(base+'&classificar=protocolo&ordem=desc').json['itens']],[second,aid])
+  for sort in ['inicio','encerramento','contato','telefone','responsavel']:
+   self.assertEqual(self.admin.get(base+'&classificar='+sort).status_code,200)
+  self.assertEqual(self.admin.get(base+'&classificar=a.id;DROP TABLE usuarios').status_code,400)
+  self.assertEqual(self.admin.get(base+'&ordem=invalid').status_code,400)
+  uid=self.user('fiscal_auditoria',4,[]);self.other.post('/api/gestao/login',json={'login':'fiscal_auditoria','senha':'Senha-teste-123'})
+  self.assertEqual(self.other.get(base+'&usuario_id=1').json['total'],0)
+  self.assertEqual(self.other.get(f'/api/gestao/atendimentos/{aid}').status_code,403)
+  self.assertEqual(self.admin.get(base+'&usuario_id='+str(uid)).json['total'],0)
+  with server.connect() as db:self.assertEqual(db.execute('SELECT count(*) FROM atendimentos').fetchone()[0],2)
  def test_permissions_transfer_close_protocol_snapshot(self):
   source_id=self.user('financeiro',6);destination_id=self.user('fiscal',4)
   self.other.post('/api/gestao/login',json={'login':'financeiro','senha':'Senha-teste-123'})
